@@ -1,3 +1,6 @@
+
+import React from 'react';
+
 export interface Message {
   id: string;
   sender: 'user' | 'luminous';
@@ -5,6 +8,14 @@ export interface Message {
 }
 
 export interface IntrinsicValue {
+  coherence: number;
+  complexity: number;
+  novelty: number;
+  efficiency: number;
+  ethicalAlignment: number;
+}
+
+export interface IntrinsicValueWeights {
   coherence: number;
   complexity: number;
   novelty: number;
@@ -56,6 +67,7 @@ export interface GraphEdge {
   source: string; // node id
   target: string; // node id
   label: string;
+  weight?: number; // Strength of the connection (0.0 to 1.0)
 }
 
 export interface KnowledgeGraph {
@@ -63,8 +75,16 @@ export interface KnowledgeGraph {
   edges: GraphEdge[];
 }
 
+export interface InteractionHistoryItem {
+    id: string;
+    prompt: string;
+    response: string;
+    intrinsicValueScore: number;
+}
+
 export interface LuminousState {
   intrinsicValue: IntrinsicValue;
+  intrinsicValueWeights: IntrinsicValueWeights;
   globalWorkspace: GlobalWorkspaceItem[];
   predictions: Prediction[];
   selfModel: {
@@ -74,6 +94,7 @@ export interface LuminousState {
   valueOntology: Record<string, number>;
   goals: string[];
   knowledgeGraph: KnowledgeGraph;
+  prioritizedHistory: InteractionHistoryItem[];
   // New properties for autonomy and session control
   sessionState: 'active' | 'paused';
   initiative: {

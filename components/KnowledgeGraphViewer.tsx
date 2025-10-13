@@ -1,4 +1,5 @@
-import React, { useState, useEffect, useRef } from 'react';
+
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import type { KnowledgeGraph, GraphNode } from '../types';
 import Card from './common/Card';
 
@@ -22,6 +23,7 @@ const KnowledgeGraphViewer: React.FC<{ graph: KnowledgeGraph }> = ({ graph }) =>
   const [hoveredNode, setHoveredNode] = useState<GraphNode | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const animationFrameRef = useRef<number>();
+  const [searchTerm, setSearchTerm] = useState('');
 
   useEffect(() => {
     const { width, height } = containerRef.current?.getBoundingClientRect() || { width: 400, height: 400 };
@@ -115,13 +117,42 @@ const KnowledgeGraphViewer: React.FC<{ graph: KnowledgeGraph }> = ({ graph }) =>
         cancelAnimationFrame(animationFrameRef.current);
       }
     };
-  }, [graph, containerRef.current]);
+  }, [graph.nodes, graph.edges]); // Removed containerRef dependency to stabilize simulation
 
-  const nodeMap = React.useMemo(() => new Map(graph.nodes.map(n => [n.id, n])), [graph.nodes]);
+  const { highlightedNodeIds, highlightedEdgeIds } = useMemo(() => {
+    if (!searchTerm.trim()) {
+        return { highlightedNodeIds: new Set<string>(), highlightedEdgeIds: new Set<string>() };
+    }
+    const lowerCaseSearch = searchTerm.toLowerCase().trim();
+    const matchingNodeIds = new Set(graph.nodes.filter(n => n.label.toLowerCase().includes(lowerCaseSearch)).map(n => n.id));
+    
+    const matchingEdgeIds = new Set(graph.edges.filter(e => e.source && matchingNodeIds.has(e.source) || e.target && matchingNodeIds.has(e.target)).map(e => e.id));
+
+    matchingEdgeIds.forEach(edgeId => {
+        const edge = graph.edges.find(e => e.id === edgeId);
+        if (edge) {
+            matchingNodeIds.add(edge.source);
+            matchingNodeIds.add(edge.target);
+        }
+    });
+
+    return { highlightedNodeIds: matchingNodeIds, highlightedEdgeIds: matchingEdgeIds };
+  }, [searchTerm, graph.nodes, graph.edges]);
+
 
   return (
-    <Card title="Knowledge Graph" className="h-full flex flex-col">
-        <div ref={containerRef} className="relative w-full h-full">
+    <div className="h-full flex flex-col bg-slate-800/50 backdrop-blur-sm border border-slate-700 rounded-lg shadow-lg">
+      <div className="px-4 py-2 border-b border-slate-700 flex justify-between items-center">
+        <h3 className="text-sm font-semibold text-cyan-400 uppercase tracking-wider">Knowledge Graph</h3>
+        <input
+          type="text"
+          placeholder="Search graph..."
+          value={searchTerm}
+          onChange={e => setSearchTerm(e.target.value)}
+          className="bg-slate-700 text-sm p-1 rounded focus:outline-none focus:ring-1 focus:ring-cyan-500 w-1/2"
+        />
+      </div>
+      <div ref={containerRef} className="relative w-full flex-grow p-4">
             <svg className="w-full h-full">
                 <defs>
                     <marker id="arrowhead" viewBox="0 0 10 10" refX="9" refY="5"
@@ -134,13 +165,14 @@ const KnowledgeGraphViewer: React.FC<{ graph: KnowledgeGraph }> = ({ graph }) =>
                     const source = positions[edge.source];
                     const target = positions[edge.target];
                     if (!source || !target) return null;
+                    const isDimmed = searchTerm.trim() && !highlightedEdgeIds.has(edge.id);
                     return (
-                        <g key={edge.id}>
+                        <g key={edge.id} className={`transition-opacity ${isDimmed ? 'opacity-10' : 'opacity-100'}`}>
                             <line
                                 x1={source.x} y1={source.y}
                                 x2={target.x} y2={target.y}
                                 className="stroke-slate-600"
-                                strokeWidth="1"
+                                strokeWidth={0.5 + (edge.weight || 0.5) * 1.5}
                                 markerEnd="url(#arrowhead)"
                             />
                             <text
@@ -159,16 +191,18 @@ const KnowledgeGraphViewer: React.FC<{ graph: KnowledgeGraph }> = ({ graph }) =>
                 {graph.nodes.map(node => {
                     const pos = positions[node.id];
                     if (!pos) return null;
+                    const isHighlighted = highlightedNodeIds.has(node.id);
+                    const isDimmed = searchTerm.trim() && !isHighlighted;
                     return (
                         <g 
                           key={node.id} 
                           transform={`translate(${pos.x}, ${pos.y})`}
                           onMouseEnter={() => setHoveredNode(node)}
                           onMouseLeave={() => setHoveredNode(null)}
-                          className="cursor-pointer"
+                          className={`cursor-pointer transition-opacity ${isDimmed ? 'opacity-20' : 'opacity-100'}`}
                         >
                             <circle
-                                r={hoveredNode?.id === node.id ? 10 : 7}
+                                r={isHighlighted ? 10 : 7}
                                 className={`${NODE_COLORS[node.type] || 'fill-slate-500 stroke-slate-300'} transition-all`}
                                 strokeWidth="2"
                             />
@@ -186,7 +220,7 @@ const KnowledgeGraphViewer: React.FC<{ graph: KnowledgeGraph }> = ({ graph }) =>
              {hoveredNode && (
                 <div 
                     className="absolute bg-slate-900/80 border border-slate-600 rounded-md p-2 text-xs shadow-lg pointer-events-none"
-                    style={{ left: positions[hoveredNode.id].x + 15, top: positions[hoveredNode.id].y + 15 }}
+                    style={{ left: positions[hoveredNode.id]?.x + 15, top: positions[hoveredNode.id]?.y + 15 }}
                 >
                     <p className="font-bold text-cyan-400">{hoveredNode.label}</p>
                     <p className="text-slate-400 capitalize">Type: {hoveredNode.type}</p>
@@ -196,7 +230,7 @@ const KnowledgeGraphViewer: React.FC<{ graph: KnowledgeGraph }> = ({ graph }) =>
                 </div>
             )}
         </div>
-    </Card>
+    </div>
   );
 };
 

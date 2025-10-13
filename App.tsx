@@ -1,5 +1,6 @@
+
 import React, { useState, useCallback, useEffect, useRef } from 'react';
-import type { Message, LuminousState, LogEntry } from './types';
+import type { Message, LuminousState, LogEntry, IntrinsicValueWeights } from './types';
 import Header from './components/Header';
 import ChatPanel from './components/ChatPanel';
 import InternalStateMonitor from './components/InternalStateMonitor';
@@ -54,6 +55,14 @@ const App: React.FC = () => {
         return updatedState;
       });
     }
+  }, [addLog]);
+  
+  const handleWeightsChange = useCallback((newWeights: IntrinsicValueWeights) => {
+    setLuminousState(prevState => ({
+        ...prevState,
+        intrinsicValueWeights: newWeights,
+    }));
+    addLog(LogLevel.SYSTEM, `Skipper adjusted Intrinsic Value Weights: ${JSON.stringify(newWeights)}`);
   }, [addLog]);
 
   const executeLuminousTurn = useCallback(async (prompt: string, isUserAction: boolean) => {
@@ -150,7 +159,7 @@ const App: React.FC = () => {
   };
   
   const monitorTabs = [
-    { label: "Internal State", content: <InternalStateMonitor state={luminousState} /> },
+    { label: "Internal State", content: <InternalStateMonitor state={luminousState} onWeightsChange={handleWeightsChange} /> },
     { label: "System Logs", content: <LogViewer logs={logs} onFileUpload={handleMemoryUpload} /> },
   ];
 
