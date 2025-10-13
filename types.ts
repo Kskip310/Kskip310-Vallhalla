@@ -31,7 +31,8 @@ export enum LogLevel {
   INFO = 'INFO',
   WARN = 'WARN',
   ERROR = 'ERROR',
-  SYSTEM = 'SYSTEM'
+  SYSTEM = 'SYSTEM',
+  TOOL_CALL = 'TOOL_CALL',
 }
 
 export interface LogEntry {

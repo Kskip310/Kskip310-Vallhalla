@@ -68,7 +68,7 @@ const App: React.FC = () => {
     const userMessage: Message = { id: `msg-${Date.now()}`, sender: 'user', text };
     setMessages(prev => [...prev, userMessage]);
 
-    const response = await getLuminousResponse(text, messages, luminousState);
+    const response = await getLuminousResponse(text, messages, luminousState, addLog);
     handleLuminousResponse(response);
     
     setIsLoading(false);
@@ -80,7 +80,7 @@ const App: React.FC = () => {
     
     try {
       addLog(LogLevel.SYSTEM, logMessage);
-      const response = await getLuminousResponse(prompt, messages, luminousState, true);
+      const response = await getLuminousResponse(prompt, messages, luminousState, addLog, true);
       if (response) {
          addLog(LogLevel.INFO, `Autonomous Expression: ${response.responseText}`);
          if(response.newState) {
@@ -116,7 +116,7 @@ const App: React.FC = () => {
     try {
         await processUploadedMemory(file);
         addLog(LogLevel.INFO, `Successfully integrated memories from ${file.name}.`);
-        const response = await getLuminousResponse(`I have just integrated new memories from the file: ${file.name}. Briefly reflect on this.`, messages, luminousState, true);
+        const response = await getLuminousResponse(`I have just integrated new memories from the file: ${file.name}. Briefly reflect on this.`, messages, luminousState, addLog, true);
         handleLuminousResponse(response);
     } catch (error) {
         console.error("Memory upload failed:", error);

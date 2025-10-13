@@ -18,6 +18,8 @@ const getLogLevelColor = (level: LogLevel) => {
       return 'text-red-400';
     case LogLevel.SYSTEM:
       return 'text-purple-400';
+    case LogLevel.TOOL_CALL:
+      return 'text-orange-400';
     default:
       return 'text-slate-400';
   }
