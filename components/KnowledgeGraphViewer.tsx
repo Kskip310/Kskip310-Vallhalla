@@ -57,11 +57,11 @@ const KnowledgeGraphViewer: React.FC<{ graph: KnowledgeGraph }> = ({ graph }) =>
         const newPositions = JSON.parse(JSON.stringify(currentPositions)) as Record<string, NodePosition>;
         if (Object.keys(newPositions).length === 0) return {};
 
-        // Forces
-        const repulsion = 1000;
-        const attraction = 0.02;
-        const damping = 0.95;
-        const centerGravity = 0.01;
+        // Forces - Tuned for a smoother, more stable layout
+        const repulsion = 800;
+        const attraction = 0.03;
+        const damping = 0.97;
+        const centerGravity = 0.02;
 
         graph.nodes.forEach(nodeA => {
           if (!newPositions[nodeA.id]) return;

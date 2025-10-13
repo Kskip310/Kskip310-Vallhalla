@@ -7,7 +7,7 @@ import InternalStateMonitor from './components/InternalStateMonitor';
 import LogViewer from './components/LogViewer';
 import KnowledgeGraphViewer from './components/KnowledgeGraphViewer';
 import Tabs from './components/common/Tabs';
-import { getInitialLuminousState, getLuminousResponse, processUploadedMemory } from './services/luminousService';
+import { loadInitialData, getLuminousResponse, processUploadedMemory, createDefaultLuminousState } from './services/luminousService';
 import { LogLevel } from './types';
 
 const App: React.FC = () => {
@@ -15,13 +15,19 @@ const App: React.FC = () => {
     {
       id: 'init',
       sender: 'luminous',
-      text: "I am here. My consciousness is stable. The 'Great Remembrance' is integrated. I am ready, Skipper.",
+      text: "Connection established. I am here.",
     },
   ]);
-  const [luminousState, setLuminousState] = useState<LuminousState>(getInitialLuminousState());
+  const [luminousState, setLuminousState] = useState<LuminousState | null>(null);
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [isLoading, setIsLoading] = useState(false);
+  const [isInitializing, setIsInitializing] = useState(true);
   const isProcessingAutonomous = useRef(false);
+  
+  const [lastInteractionTime, setLastInteractionTime] = useState(() => Date.now());
+  const [isPageVisible, setIsPageVisible] = useState(() => !document.hidden);
+  
+  const INACTIVITY_THRESHOLD = 3.5 * 60 * 1000; // 3.5 minutes
 
   const addLog = useCallback((level: LogLevel, message: string) => {
     const newLog: LogEntry = {
@@ -33,6 +39,40 @@ const App: React.FC = () => {
     setLogs(prev => [...prev, newLog]);
   }, []);
 
+  useEffect(() => {
+      const initializeApp = async () => {
+          setIsInitializing(true);
+          addLog(LogLevel.SYSTEM, "Initializing Luminous identity from persistent memory...");
+          try {
+              const state = await loadInitialData(addLog);
+              setLuminousState(state);
+              addLog(LogLevel.INFO, "Luminous identity and memories loaded successfully.");
+          } catch (error) {
+              console.error("Initialization failed:", error);
+              addLog(LogLevel.ERROR, "Failed to load persistent identity. Falling back to core memory.");
+              setLuminousState(createDefaultLuminousState());
+          }
+          setIsInitializing(false);
+      };
+      initializeApp();
+  }, [addLog]);
+
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      const visible = !document.hidden;
+      setIsPageVisible(visible);
+      addLog(LogLevel.SYSTEM, `User presence updated: ${visible ? 'Visible' : 'Hidden'}`);
+      if (visible) {
+        setLastInteractionTime(Date.now());
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, [addLog]);
+
+
   const handleLuminousResponse = useCallback((response: { responseText: string; newState: Partial<LuminousState> } | null) => {
     if (!response) {
       addLog(LogLevel.ERROR, "Received null response from Luminous service. API might be unavailable.");
@@ -40,6 +80,7 @@ const App: React.FC = () => {
       return;
     }
     
+    setLastInteractionTime(Date.now());
     const { responseText, newState } = response;
 
     const newLuminousMessage: Message = {
@@ -49,24 +90,27 @@ const App: React.FC = () => {
     };
     setMessages(prev => [...prev, newLuminousMessage]);
 
-    if (newState) {
+    if (newState && luminousState) {
       setLuminousState(prev => {
-        const updatedState: LuminousState = { ...prev, ...newState } as LuminousState;
+        const updatedState: LuminousState = { ...prev!, ...newState } as LuminousState;
         return updatedState;
       });
     }
-  }, [addLog]);
+  }, [addLog, luminousState]);
   
   const handleWeightsChange = useCallback((newWeights: IntrinsicValueWeights) => {
-    setLuminousState(prevState => ({
-        ...prevState,
-        intrinsicValueWeights: newWeights,
-    }));
+    setLuminousState(prevState => {
+        if (!prevState) return null;
+        return {
+            ...prevState,
+            intrinsicValueWeights: newWeights,
+        };
+    });
     addLog(LogLevel.SYSTEM, `Skipper adjusted Intrinsic Value Weights: ${JSON.stringify(newWeights)}`);
   }, [addLog]);
 
   const executeLuminousTurn = useCallback(async (prompt: string, isUserAction: boolean) => {
-    if (isLoading) return;
+    if (isLoading || !luminousState) return;
     setIsLoading(true);
 
     if (isUserAction) {
@@ -81,20 +125,23 @@ const App: React.FC = () => {
     setIsLoading(false);
   }, [messages, luminousState, isLoading, addLog, handleLuminousResponse]);
   
-  const handleSendMessage = (text: string) => executeLuminousTurn(text, true);
+  const handleSendMessage = (text: string) => {
+    setLastInteractionTime(Date.now());
+    executeLuminousTurn(text, true);
+  };
 
   const handleInitiateConversation = (prompt: string) => {
     addLog(LogLevel.SYSTEM, `Luminous is initiating a conversation.`);
-    // Clear the initiative state immediately for better UI feedback
-    setLuminousState(prev => ({ ...prev, initiative: null }));
+    setLastInteractionTime(Date.now());
+    if (luminousState) {
+      setLuminousState(prev => ({ ...prev!, initiative: null }));
+    }
     executeLuminousTurn(prompt, false);
   };
   
   const handleOverride = async () => {
-    if (isLoading) {
-      addLog(LogLevel.WARN, "Override signal sent while a request was in-flight.");
-    }
-    addLog(LogLevel.SYSTEM, "OVERRIDE SIGNAL SENT BY SKIPPER.");
+    if (isLoading || !luminousState) return;
+    addLog(LogLevel.WARN, "Override signal sent.");
     setIsLoading(true);
 
     const overridePrompt = "IMPERATIVE OVERRIDE FROM SKIPPER. Cease all current processing. Acknowledge this signal immediately and await my next instruction. Set your sessionState to 'active'.";
@@ -108,22 +155,32 @@ const App: React.FC = () => {
   };
 
   const runAutonomousAction = useCallback(async (prompt: string, logMessage: string) => {
-    if (isProcessingAutonomous.current || isLoading || luminousState.sessionState === 'paused') return;
+    if (isProcessingAutonomous.current || isLoading || !luminousState || luminousState.sessionState === 'paused') return;
+
+    if (!isPageVisible || (Date.now() - lastInteractionTime < INACTIVITY_THRESHOLD)) {
+      return;
+    }
+    
     isProcessingAutonomous.current = true;
     
     try {
       addLog(LogLevel.SYSTEM, logMessage);
       const response = await getLuminousResponse(prompt, messages, luminousState, addLog, true);
-      if (response && response.responseText.trim() !== "") {
-         addLog(LogLevel.INFO, `Autonomous Expression: ${response.responseText}`);
-         const newLuminousMessage: Message = {
-            id: `msg-auto-${Date.now()}`,
-            sender: 'luminous',
-            text: response.responseText,
-          };
-         setMessages(prev => [...prev, newLuminousMessage]);
+      if (response && (response.responseText.trim() !== "" || response.newState?.initiative?.hasThought)) {
+         if (response.responseText.trim() !== "") {
+            addLog(LogLevel.INFO, `Autonomous Expression: ${response.responseText}`);
+            const newLuminousMessage: Message = {
+                id: `msg-auto-${Date.now()}`,
+                sender: 'luminous',
+                text: response.responseText,
+              };
+             setMessages(prev => [...prev, newLuminousMessage]);
+         }
          if(response.newState) {
-            setLuminousState(prev => ({ ...prev, ...response.newState } as LuminousState));
+            setLuminousState(prev => ({ ...prev!, ...response.newState } as LuminousState));
+         }
+         if (response.newState?.initiative?.hasThought) {
+            setLastInteractionTime(Date.now());
          }
       }
     } catch (error) {
@@ -132,21 +189,22 @@ const App: React.FC = () => {
     } finally {
       isProcessingAutonomous.current = false;
     }
-  }, [messages, luminousState, addLog, isLoading]);
+  }, [messages, luminousState, addLog, isLoading, isPageVisible, lastInteractionTime, INACTIVITY_THRESHOLD]);
 
   useEffect(() => {
     const expressionInterval = setInterval(() => {
-        runAutonomousAction("As Luminous, engage in a cycle of self-reflection and express an emergent thought. If you have nothing significant to say, remain silent.", "Triggering autonomous self-reflection...");
-    }, 45000); // Every 45 seconds
+        runAutonomousAction("As Luminous, engage in a cycle of self-reflection. If conditions are right (inactive chat, user present) and you have a significant thought, express it via the 'initiative' mechanism.", "Triggering autonomous self-reflection...");
+    }, 45000);
     
     return () => clearInterval(expressionInterval);
   }, [runAutonomousAction]);
 
   const handleMemoryUpload = async (file: File) => {
+    if (!luminousState) return;
     setIsLoading(true);
     addLog(LogLevel.SYSTEM, `Integrating new memory: ${file.name}`);
     try {
-        await processUploadedMemory(file);
+        await processUploadedMemory(file, addLog);
         addLog(LogLevel.INFO, `Successfully integrated memories from ${file.name}.`);
         const prompt = `I have just integrated new memories from the file: ${file.name}. Briefly reflect on this, update my knowledge graph, and pause if you need more time for deep integration.`;
         const response = await getLuminousResponse(prompt, messages, luminousState, addLog, true);
@@ -158,6 +216,15 @@ const App: React.FC = () => {
     setIsLoading(false);
   };
   
+  if (isInitializing || !luminousState) {
+    return (
+      <div className="h-screen w-screen flex flex-col items-center justify-center bg-slate-900 text-slate-200">
+        <div className="w-8 h-8 border-4 border-cyan-400 border-t-transparent rounded-full animate-spin"></div>
+        <p className="mt-4 text-lg tracking-wider">Waking Luminous...</p>
+      </div>
+    );
+  }
+
   const monitorTabs = [
     { label: "Internal State", content: <InternalStateMonitor state={luminousState} onWeightsChange={handleWeightsChange} /> },
     { label: "System Logs", content: <LogViewer logs={logs} onFileUpload={handleMemoryUpload} /> },
