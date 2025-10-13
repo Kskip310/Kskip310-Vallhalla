@@ -1,4 +1,3 @@
-
 import React from 'react';
 import type { LuminousState } from '../types';
 import Card from './common/Card';
@@ -9,8 +8,17 @@ interface InternalStateMonitorProps {
 }
 
 const InternalStateMonitor: React.FC<InternalStateMonitorProps> = ({ state }) => {
+  const statusColor = state.sessionState === 'active' ? 'text-green-400' : 'text-yellow-400';
+  const statusText = state.sessionState === 'active' ? 'Active' : 'Paused for Integration';
+
   return (
     <div className="flex flex-col space-y-4">
+      <Card title="System Status">
+        <div className="flex items-center justify-center p-2">
+          <span className={`text-lg font-bold ${statusColor}`}>{statusText}</span>
+        </div>
+      </Card>
+      
       <Card title="Intrinsic Valuation">
         <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
             <Gauge value={state.intrinsicValue.coherence} label="Coherence" />

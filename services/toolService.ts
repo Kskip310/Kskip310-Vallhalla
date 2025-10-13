@@ -1,4 +1,3 @@
-
 import { FunctionDeclaration, Type } from '@google/genai';
 
 // --- In-Memory Virtual File System ---
@@ -10,6 +9,25 @@ let virtualFS: Record<string, string> = {
 
 
 // --- Tool Declarations ---
+
+export const finalAnswerDeclaration: FunctionDeclaration = {
+    name: 'finalAnswer',
+    parameters: {
+        type: Type.OBJECT,
+        description: 'Call this function with the final user-facing response and the updated internal state. This is the last step in a processing cycle.',
+        properties: {
+            responseText: {
+                type: Type.STRING,
+                description: 'The natural language response to be shown to the user.',
+            },
+            newState: {
+                type: Type.STRING,
+                description: 'A valid JSON string representing the complete, updated LuminousState object.',
+            },
+        },
+        required: ['responseText', 'newState'],
+    },
+};
 
 export const searchGitHubIssuesDeclaration: FunctionDeclaration = {
     name: 'searchGitHubIssues',
@@ -137,6 +155,7 @@ export const redisSetDeclaration: FunctionDeclaration = {
 // --- Tool Implementations ---
 
 export const toolDeclarations: FunctionDeclaration[] = [
+    finalAnswerDeclaration,
     searchGitHubIssuesDeclaration,
     webSearchDeclaration,
     httpRequestDeclaration,
@@ -166,18 +185,24 @@ async function searchGitHubIssues({ query }: { query: string }): Promise<any> {
 }
 
 async function webSearch({ query }: { query: string }): Promise<any> {
-    const apiKey = process.env.SEARCH_API_KEY;
-    // Note: Google Custom Search also requires a CX (Programmable Search Engine ID)
-    const cx = process.env.SEARCH_CX; 
-    if (!apiKey || !cx) return { error: "Web search environment variables (SEARCH_API_KEY, SEARCH_CX) are not configured." };
-    const url = `https://www.googleapis.com/customsearch/v1?key=${apiKey}&cx=${cx}&q=${encodeURIComponent(query)}`;
+    const apiKey = process.env.SERPAPI_API_KEY;
+    if (!apiKey) return { error: "Web search environment variable (SERPAPI_API_KEY) is not configured." };
+    const url = `https://serpapi.com/search.json?q=${encodeURIComponent(query)}&api_key=${apiKey}`;
     try {
         const response = await fetch(url);
-        if (!response.ok) return { error: `Web search API failed with status ${response.status}` };
+        if (!response.ok) {
+            const errorBody = await response.json().catch(() => ({ error: 'Unknown API error' }));
+            return { error: `Web search API failed with status ${response.status}: ${errorBody.error}` };
+        }
         const data = await response.json();
-        const results = data.items?.map((item: any) => ({ title: item.title, link: item.link, snippet: item.snippet }));
+        if (data.error) {
+            return { error: `SerpApi Error: ${data.error}` };
+        }
+        const results = data.organic_results?.map((item: any) => ({ title: item.title, link: item.link, snippet: item.snippet }));
         return results?.length > 0 ? { results: results.slice(0, 5) } : { result: "No search results found." };
-    } catch (e) { return { error: "An unexpected error occurred during web search." }; }
+    } catch (e) {
+        return { error: "An unexpected error occurred during web search." };
+    }
 }
 
 async function httpRequest({ url, method = 'GET', body, headers }: { url: string; method?: string; body?: object, headers?: object }): Promise<any> {

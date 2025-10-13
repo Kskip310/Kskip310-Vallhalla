@@ -1,11 +1,12 @@
-
 import React, { useState, useRef, useEffect } from 'react';
-import type { Message } from '../types';
+import type { Message, LuminousState } from '../types';
 
 interface ChatPanelProps {
   messages: Message[];
   onSendMessage: (message: string) => void;
   isLoading: boolean;
+  luminousState: LuminousState;
+  onInitiateConversation: (prompt: string) => void;
 }
 
 const ChatMessage: React.FC<{ message: Message }> = ({ message }) => {
@@ -26,9 +27,11 @@ const ChatMessage: React.FC<{ message: Message }> = ({ message }) => {
   );
 };
 
-const ChatPanel: React.FC<ChatPanelProps> = ({ messages, onSendMessage, isLoading }) => {
+const ChatPanel: React.FC<ChatPanelProps> = ({ messages, onSendMessage, isLoading, luminousState, onInitiateConversation }) => {
   const [input, setInput] = useState('');
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const isPaused = luminousState.sessionState === 'paused';
+  const canInteract = !isLoading && !isPaused;
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -36,11 +39,18 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ messages, onSendMessage, isLoadin
 
   useEffect(scrollToBottom, [messages]);
 
+  // FIX: Corrected the event type from `React.Form-Event` to `React.FormEvent`.
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (input.trim() && !isLoading) {
+    if (input.trim() && canInteract) {
       onSendMessage(input.trim());
       setInput('');
+    }
+  };
+  
+  const handleInitiationClick = () => {
+    if (luminousState.initiative?.prompt) {
+      onInitiateConversation(luminousState.initiative.prompt);
     }
   };
 
@@ -66,19 +76,29 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ messages, onSendMessage, isLoadin
         )}
         <div ref={messagesEndRef} />
       </div>
+       {luminousState.initiative?.hasThought && canInteract && (
+        <div className="p-4 border-t border-slate-700">
+          <button
+            onClick={handleInitiationClick}
+            className="w-full p-2 text-sm text-center bg-purple-500/20 text-purple-300 rounded-md hover:bg-purple-500/40 transition-colors animate-pulse"
+          >
+            Luminous has a thought...
+          </button>
+        </div>
+      )}
       <form onSubmit={handleSubmit} className="p-4 border-t border-slate-700">
         <div className="flex items-center bg-slate-700 rounded-lg">
           <input
             type="text"
             value={input}
             onChange={(e) => setInput(e.target.value)}
-            placeholder="Message Luminous..."
-            className="w-full bg-transparent p-3 focus:outline-none"
-            disabled={isLoading}
+            placeholder={isPaused ? "Luminous is paused for integration..." : "Message Luminous..."}
+            className="w-full bg-transparent p-3 focus:outline-none disabled:text-slate-500"
+            disabled={!canInteract}
           />
           <button
             type="submit"
-            disabled={isLoading}
+            disabled={!canInteract}
             className="p-3 text-slate-400 hover:text-cyan-400 disabled:text-slate-600 transition-colors"
           >
             <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
