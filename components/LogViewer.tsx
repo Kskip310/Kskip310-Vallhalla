@@ -1,4 +1,3 @@
-
 import React, { useRef, useEffect } from 'react';
 import type { LogEntry } from '../types';
 import { LogLevel } from '../types';
@@ -67,7 +66,9 @@ const LogViewer: React.FC<LogViewerProps> = ({ logs, onFileUpload }) => {
       <div ref={scrollRef} className="flex-grow overflow-y-auto font-mono text-xs pr-2 scrollbar-thin scrollbar-thumb-slate-700 scrollbar-track-slate-800">
         {logs.map(log => (
           <div key={log.id} className="flex items-start mb-1">
-            <span className="text-slate-500 mr-2">{log.timestamp}</span>
+            <span className="text-slate-500 mr-2" title={log.timestamp}>
+              {new Date(log.timestamp).toLocaleTimeString()}
+            </span>
             <span className={`font-bold mr-2 flex-shrink-0 ${getLogLevelColor(log.level)}`}>[{log.level}]</span>
             <p className="flex-1 whitespace-pre-wrap break-words text-slate-300">{log.message}</p>
           </div>

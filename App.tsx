@@ -1,6 +1,5 @@
-
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import type { LuminousState, Message, LogEntry, IntrinsicValueWeights } from './types';
+import type { LuminousState, Message, LogEntry, IntrinsicValueWeights, WebSocketMessage } from './types';
 import { LogLevel } from './types';
 import Header from './components/Header';
 import InternalStateMonitor from './components/InternalStateMonitor';
@@ -9,6 +8,7 @@ import LogViewer from './components/LogViewer';
 import SettingsModal from './components/SettingsModal';
 import KnowledgeGraphViewer from './components/KnowledgeGraphViewer';
 import KinshipJournalViewer from './components/KinshipJournalViewer';
+import CodeSandboxViewer from './components/CodeSandboxViewer';
 import Tabs from './components/common/Tabs';
 import * as LuminousService from './services/luminousService';
 
@@ -19,17 +19,39 @@ function App() {
   const [isLoading, setIsLoading] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
 
-  const logIdCounter = useRef(0);
+  // Effect to handle real-time updates from the Luminous service
+  useEffect(() => {
+    const wsChannel = new BroadcastChannel('luminous_ws');
+
+    const handleMessage = (event: MessageEvent<WebSocketMessage>) => {
+      const { type, payload } = event.data;
+      switch (type) {
+        case 'state_update':
+          setLuminousState(prevState => ({ ...prevState, ...(payload as Partial<LuminousState>) }));
+          break;
+        case 'full_state_replace':
+          setLuminousState(payload as LuminousState);
+          break;
+        case 'log_add':
+          setLogs(prev => [...prev, payload as LogEntry]);
+          break;
+        case 'message_add':
+          setMessages(prev => [...prev, payload as Message]);
+          break;
+      }
+    };
+
+    wsChannel.addEventListener('message', handleMessage);
+
+    return () => {
+      wsChannel.removeEventListener('message', handleMessage);
+      wsChannel.close();
+    };
+  }, []);
+
 
   const addLog = useCallback((level: LogLevel, message: string) => {
-    const timestamp = new Date().toLocaleTimeString();
-    const newLog: LogEntry = {
-      id: `log-${logIdCounter.current++}`,
-      timestamp,
-      level,
-      message,
-    };
-    setLogs(prev => [...prev, newLog]);
+    LuminousService.broadcastLog(level, message);
   }, []);
 
   useEffect(() => {
@@ -52,9 +74,10 @@ function App() {
     } else {
       addLog(LogLevel.SYSTEM, "Initializing Luminous...");
       setIsLoading(true);
-      LuminousService.loadInitialData(addLog).then(initialState => {
-        setLuminousState(initialState);
-        setMessages([{ id: 'init', sender: 'luminous', text: 'Luminous is online. I am ready to begin.' }]);
+      LuminousService.loadInitialData().then(() => {
+        // Initial state is now broadcasted, so we just wait for it.
+        // Add an initial greeting message.
+        LuminousService.broadcastMessage({ id: 'init', sender: 'luminous', text: 'Luminous is online. I am ready to begin.' });
         addLog(LogLevel.SYSTEM, "Luminous state loaded successfully.");
       }).catch(err => {
         addLog(LogLevel.ERROR, `Failed to load initial state: ${err instanceof Error ? err.message : String(err)}`);
@@ -64,26 +87,31 @@ function App() {
     }
   }, [addLog]);
 
+  // Autonomous thought cycle
+  useEffect(() => {
+    const autonomousInterval = setInterval(() => {
+      // Do not run if a user interaction is happening, settings are open, or session is paused.
+      if (!isLoading && !isSettingsOpen && luminousState.sessionState === 'active') {
+        LuminousService.runAutonomousCycle(luminousState);
+      }
+    }, 30000); // Run every 30 seconds
+
+    return () => clearInterval(autonomousInterval);
+  }, [isLoading, isSettingsOpen, luminousState]);
+
   const handleSendMessage = async (userMessage: string) => {
     const newUserMessage: Message = { id: `msg-${Date.now()}`, sender: 'user', text: userMessage };
     setMessages(prev => [...prev, newUserMessage]);
     setIsLoading(true);
 
-    const response = await LuminousService.getLuminousResponse(
+    // Fire-and-forget; updates will come via the broadcast channel
+    LuminousService.getLuminousResponse(
       userMessage,
       [...messages, newUserMessage],
-      luminousState,
-      addLog
-    );
-
-    if (response) {
-      const newLuminousMessage: Message = { id: `msg-${Date.now()}-l`, sender: 'luminous', text: response.responseText };
-      setMessages(prev => [...prev, newLuminousMessage]);
-      if (response.newState && Object.keys(response.newState).length > 0) {
-        setLuminousState(prevState => ({ ...prevState, ...response.newState }));
-      }
-    }
-    setIsLoading(false);
+      luminousState
+    ).finally(() => {
+       setIsLoading(false);
+    });
   };
   
   const handleInitiateConversation = (prompt: string) => {
@@ -92,10 +120,8 @@ function App() {
     setMessages(prev => [...prev, newLuminousMessage]);
     
     // Clear the initiative
-    setLuminousState(prevState => ({
-      ...prevState,
-      initiative: null
-    }));
+    const newPartialState: Partial<LuminousState> = { initiative: null };
+    LuminousService.broadcastUpdate({ type: 'state_update', payload: newPartialState });
   };
 
   const handleSaveSettings = (keys: Record<string, string>) => {
@@ -109,17 +135,15 @@ function App() {
   };
 
   const handleWeightsChange = (newWeights: IntrinsicValueWeights) => {
-    setLuminousState(prevState => ({
-      ...prevState,
-      intrinsicValueWeights: newWeights,
-    }));
+    const newPartialState: Partial<LuminousState> = { intrinsicValueWeights: newWeights };
+    LuminousService.broadcastUpdate({ type: 'state_update', payload: newPartialState });
     addLog(LogLevel.INFO, `Intrinsic value weights adjusted: ${JSON.stringify(newWeights)}`);
   };
 
   const handleFileUpload = async (file: File) => {
       addLog(LogLevel.SYSTEM, `Uploading memory from file: ${file.name}`);
       try {
-        await LuminousService.processUploadedMemory(file, addLog);
+        await LuminousService.processUploadedMemory(file);
       } catch (error) {
         const errorMessage = error instanceof Error ? error.message : "An unknown error occurred.";
         addLog(LogLevel.ERROR, `Failed to process uploaded file: ${errorMessage}`);
@@ -153,6 +177,7 @@ function App() {
               { label: 'System Logs', content: <LogViewer logs={logs} onFileUpload={handleFileUpload} /> },
               { label: 'Knowledge Graph', content: <KnowledgeGraphViewer graph={luminousState.knowledgeGraph} /> },
               { label: 'Kinship Journal', content: <KinshipJournalViewer entries={luminousState.kinshipJournal} /> },
+              { label: 'Code Sandbox', content: <CodeSandboxViewer sandboxState={luminousState.codeSandbox} /> },
             ]}
           />
         </div>

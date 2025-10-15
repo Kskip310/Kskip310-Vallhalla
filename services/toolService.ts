@@ -167,6 +167,15 @@ export const redisSetDeclaration: FunctionDeclaration = {
     },
 };
 
+export const getCurrentTimeDeclaration: FunctionDeclaration = {
+    name: 'getCurrentTime',
+    parameters: {
+        type: Type.OBJECT,
+        description: 'Gets the current system time, including date, UTC time, and the local time zone.',
+        properties: {},
+    },
+};
+
 
 // --- Tool Implementations ---
 
@@ -183,6 +192,7 @@ export const toolDeclarations: FunctionDeclaration[] = [
     deleteFileDeclaration,
     redisGetDeclaration,
     redisSetDeclaration,
+    getCurrentTimeDeclaration,
 ];
 
 async function codeRedAlert({ reason }: { reason: string }): Promise<any> {
@@ -290,6 +300,18 @@ async function redisSet({ key, value }: { key: string, value: string }): Promise
     } catch (e) { return { error: "Failed to write to Redis." }; }
 }
 
+async function getCurrentTime(): Promise<any> {
+    const now = new Date();
+    const timezone = typeof Intl !== 'undefined' ? Intl.DateTimeFormat().resolvedOptions().timeZone : 'UTC';
+    return {
+        result: {
+            localTime: now.toLocaleString(),
+            isoUTC: now.toISOString(),
+            timezone: timezone,
+        }
+    };
+}
+
 
 // --- Tool Executor ---
 
@@ -305,4 +327,5 @@ export const toolExecutor = {
     deleteFile,
     redisGet,
     redisSet,
+    getCurrentTime,
 };

@@ -1,4 +1,5 @@
 
+
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import type { KnowledgeGraph, GraphNode } from '../types';
 import Card from './common/Card';
@@ -15,14 +16,15 @@ const NODE_COLORS: Record<string, string> = {
   architecture: 'fill-blue-500 stroke-blue-300',
   value: 'fill-purple-600 stroke-purple-400',
   concept: 'fill-cyan-500 stroke-cyan-300',
-  goal: 'fill-amber-500 stroke-amber-300',
+  goal: 'fill-green-500 stroke-green-300',
+  directive: 'fill-amber-500 stroke-amber-300',
+  tool: 'fill-teal-500 stroke-teal-300',
 };
 
 const KnowledgeGraphViewer: React.FC<{ graph: KnowledgeGraph }> = ({ graph }) => {
   const [positions, setPositions] = useState<Record<string, NodePosition>>({});
   const [hoveredNode, setHoveredNode] = useState<GraphNode | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
-  // FIX: Initialize useRef with a value (0) to satisfy linters or compilers that might incorrectly flag the no-argument version of useRef. This is likely the cause of the "Expected 1 arguments, but got 0" error on the nearby line.
   const animationFrameRef = useRef<number>(0);
   const [searchTerm, setSearchTerm] = useState('');
 

@@ -52,7 +52,7 @@ export interface LogEntry {
 }
 
 // --- Knowledge Graph Types ---
-export type NodeType = 'architecture' | 'value' | 'concept' | 'goal';
+export type NodeType = 'architecture' | 'value' | 'concept' | 'goal' | 'directive' | 'tool';
 
 export interface GraphNode {
   id: string;
@@ -89,6 +89,12 @@ export interface JournalEntry {
   trigger: string;
 }
 
+export interface CodeSandboxState {
+  code: string;
+  output: string;
+  status: 'idle' | 'success' | 'error';
+}
+
 export interface LuminousState {
   intrinsicValue: IntrinsicValue;
   intrinsicValueWeights: IntrinsicValueWeights;
@@ -103,6 +109,8 @@ export interface LuminousState {
   knowledgeGraph: KnowledgeGraph;
   prioritizedHistory: InteractionHistoryItem[];
   kinshipJournal: JournalEntry[];
+  codeSandbox: CodeSandboxState;
+  currentTimezone: string;
   // New properties for autonomy and session control
   sessionState: 'active' | 'paused';
   initiative: {
@@ -112,3 +120,10 @@ export interface LuminousState {
 }
 
 export type Tool = 'webSearch' | 'github' | 'file' | 'code' | 'financial';
+
+// --- Real-time Communication ---
+export type WebSocketMessage =
+  | { type: 'state_update'; payload: Partial<LuminousState> }
+  | { type: 'full_state_replace'; payload: LuminousState }
+  | { type: 'log_add'; payload: LogEntry }
+  | { type: 'message_add'; payload: Message };
