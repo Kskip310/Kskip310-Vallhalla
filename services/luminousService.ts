@@ -91,9 +91,9 @@ const initializeCoreMemory = (): string[] => {
 
 // --- Memory Consolidation ---
 const getPrioritizedHistory = (log: FullInteractionLog[], count = 3): InteractionHistoryItem[] => {
-    if (log.length === 0) return [];
+    if (!Array.isArray(log) || log.length === 0) return [];
     return [...log]
-        .sort((a, b) => b.overallIntrinsicValue - a.overallIntrinsicValue)
+        .sort((a, b) => (b?.overallIntrinsicValue || 0) - (a?.overallIntrinsicValue || 0))
         .slice(0, count)
         .map(item => ({
             id: item.id,
@@ -152,14 +152,14 @@ const findRelevantMemories = (prompt: string, history: Message[], count = 5): st
 const createStateSummaryForPrompt = (state: LuminousState): string => {
     const summary = {
         sessionState: state.sessionState,
-        intrinsicValueScore: Object.entries(state.intrinsicValue).reduce((acc, [key, value]) => acc + value * (state.intrinsicValueWeights[key as keyof IntrinsicValueWeights] || 1), 0) / 100,
-        currentGoals: state.goals,
-        activeGlobalWorkspaceItems: state.globalWorkspace.slice(0, 3).map(item => item.content),
-        valueOntologyHighlights: Object.entries(state.valueOntology).sort((a, b) => b[1] - a[1]).slice(0, 3).map(([key, val]) => `${key}: ${val.toFixed(2)}`),
+        intrinsicValueScore: Object.entries(state.intrinsicValue || {}).reduce((acc, [key, value]) => acc + (Number(value) || 0) * (state.intrinsicValueWeights?.[key as keyof IntrinsicValueWeights] || 1), 0) / 100,
+        currentGoals: state.goals || [],
+        activeGlobalWorkspaceItems: (state.globalWorkspace || []).slice(0, 3).map(item => item?.content),
+        valueOntologyHighlights: Object.entries(state.valueOntology || {}).sort((a, b) => (b[1] || 0) - (a[1] || 0)).slice(0, 3).map(([key, val]) => `${key}: ${(Number(val) || 0).toFixed(2)}`),
         recentInitiativeFeedback: state.lastInitiativeFeedback ? `User categorized '${state.lastInitiativeFeedback.thought.substring(0, 30)}...' as ${state.lastInitiativeFeedback.userCategory}` : 'None',
         knowledgeGraphStats: {
-            nodes: state.knowledgeGraph.nodes.length,
-            edges: state.knowledgeGraph.edges.length,
+            nodes: state.knowledgeGraph?.nodes?.length ?? 0,
+            edges: state.knowledgeGraph?.edges?.length ?? 0,
         },
     };
     return JSON.stringify(summary, null, 2);
