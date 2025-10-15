@@ -32,6 +32,26 @@ const ViewToggleButton: React.FC<{ isActive: boolean, onClick: () => void, child
     </button>
 );
 
+const styles = `
+  .kg-container {
+    background-color: #020617;
+    background-image:
+      radial-gradient(white, rgba(255,255,255,.2) 2px, transparent 40px),
+      radial-gradient(white, rgba(255,255,255,.15) 1px, transparent 30px),
+      radial-gradient(white, rgba(255,255,255,.1) 2px, transparent 40px),
+      radial-gradient(rgba(255,255,255,.4), rgba(255,255,255,.1) 2px, transparent 30px);
+    background-size: 550px 550px, 350px 350px, 250px 250px, 150px 150px;
+    background-position: 0 0, 40px 60px, 130px 270px, 70px 100px;
+  }
+  @keyframes pulse {
+    0% { opacity: 0.7; }
+    50% { opacity: 1; }
+    100% { opacity: 0.7; }
+  }
+  .node-pulse {
+    animation: pulse 2s infinite ease-in-out;
+  }
+`;
 
 const KnowledgeGraphViewer: React.FC<KnowledgeGraphViewerProps> = ({ graph, valueOntology }) => {
   const [positions, setPositions] = useState<Record<string, NodePosition>>({});
@@ -40,6 +60,11 @@ const KnowledgeGraphViewer: React.FC<KnowledgeGraphViewerProps> = ({ graph, valu
   const animationFrameRef = useRef<number>(0);
   const [searchTerm, setSearchTerm] = useState('');
   const [view, setView] = useState<'full' | 'ontology'>('full');
+  
+  const [transform, setTransform] = useState({ k: 1, x: 0, y: 0 });
+  const [isDragging, setIsDragging] = useState(false);
+  const dragStartRef = useRef({ x: 0, y: 0 });
+  const svgRef = useRef<SVGSVGElement>(null);
 
   const filteredGraph = useMemo(() => {
     if (view === 'full') {
@@ -71,7 +96,6 @@ const KnowledgeGraphViewer: React.FC<KnowledgeGraphViewerProps> = ({ graph, valu
     const { width, height } = container.getBoundingClientRect();
     if(width === 0 || height === 0) return;
 
-    // Initialize positions for new nodes
     setPositions(prevPositions => {
       const newPositions: Record<string, NodePosition> = {};
       filteredGraph.nodes.forEach(node => {
@@ -112,7 +136,7 @@ const KnowledgeGraphViewer: React.FC<KnowledgeGraphViewerProps> = ({ graph, valu
 
         valueNodes.forEach((node, index) => {
             const valueScore = valueOntology[node.label] ?? valueOntology[Object.keys(valueOntology).find(k => k.toLowerCase() === node.label.toLowerCase()) ?? ''] ?? 0.5;
-            const radius = maxRadius * (1.1 - valueScore); // Higher score = closer to center
+            const radius = maxRadius * (1.1 - valueScore);
             const angle = angleStep * index;
 
             newPositions[node.id] = {
@@ -210,8 +234,47 @@ const KnowledgeGraphViewer: React.FC<KnowledgeGraphViewerProps> = ({ graph, valu
     return isHighlighted ? 10 : 7;
   }
 
+  const handleWheel = (event: React.WheelEvent) => {
+      if (!svgRef.current) return;
+      event.preventDefault();
+      const { clientX, clientY, deltaY } = event;
+      const svgPoint = svgRef.current.createSVGPoint();
+      svgPoint.x = clientX;
+      svgPoint.y = clientY;
+      
+      const point = svgPoint.matrixTransform(svgRef.current.getScreenCTM()?.inverse());
+      
+      const zoomFactor = 1.1;
+      const newScale = deltaY < 0 ? transform.k * zoomFactor : transform.k / zoomFactor;
+      const newK = Math.max(0.1, Math.min(5, newScale));
+
+      const newX = point.x - (point.x - transform.x) * (newK / transform.k);
+      const newY = point.y - (point.y - transform.y) * (newK / transform.k);
+
+      setTransform({ k: newK, x: newX, y: newY });
+  };
+
+  const handleMouseDown = (event: React.MouseEvent) => {
+      setIsDragging(true);
+      dragStartRef.current = { x: event.clientX - transform.x, y: event.clientY - transform.y };
+  };
+
+  const handleMouseMove = (event: React.MouseEvent) => {
+      if (!isDragging) return;
+      setTransform(prev => ({
+          ...prev,
+          x: event.clientX - dragStartRef.current.x,
+          y: event.clientY - dragStartRef.current.y,
+      }));
+  };
+
+  const handleMouseUp = () => {
+      setIsDragging(false);
+  };
+
   return (
     <div className="h-full flex flex-col bg-slate-800/50 backdrop-blur-sm border border-slate-700 rounded-lg shadow-lg">
+      <style>{styles}</style>
       <div className="px-4 py-2 border-b border-slate-700 flex justify-between items-center gap-4">
         <div className="flex items-center space-x-2">
             <ViewToggleButton isActive={view === 'full'} onClick={() => setView('full')}>Full Graph</ViewToggleButton>
@@ -227,37 +290,64 @@ const KnowledgeGraphViewer: React.FC<KnowledgeGraphViewerProps> = ({ graph, valu
             />
         )}
       </div>
-      <div ref={containerRef} className="relative w-full flex-grow p-4">
-            <svg className="w-full h-full">
-                <defs>
-                    <marker id="arrowhead" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
-                        <path d="M 0 0 L 10 5 L 0 10 z" fill="#475569" />
-                    </marker>
-                </defs>
+      <div 
+        ref={containerRef} 
+        className="relative w-full flex-grow overflow-hidden kg-container"
+        onWheel={handleWheel}
+        onMouseDown={handleMouseDown}
+        onMouseMove={handleMouseMove}
+        onMouseUp={handleMouseUp}
+        onMouseLeave={handleMouseUp}
+        style={{ cursor: isDragging ? 'grabbing' : 'grab' }}
+      >
+        <svg ref={svgRef} className="w-full h-full">
+            <defs>
+                <filter id="node-glow" x="-50%" y="-50%" width="200%" height="200%">
+                    <feGaussianBlur stdDeviation="3.5" result="coloredBlur" />
+                    <feMerge>
+                        <feMergeNode in="coloredBlur" />
+                        <feMergeNode in="SourceGraphic" />
+                    </feMerge>
+                </filter>
+                <marker id="arrowhead" viewBox="0 0 10 10" refX="9.5" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+                    <path d="M 0 0 L 10 5 L 0 10 z" fill="#0891b2" />
+                </marker>
+            </defs>
 
+            <g transform={`translate(${transform.x}, ${transform.y}) scale(${transform.k})`}>
                 {filteredGraph.edges.map(edge => {
                     const source = positions[edge.source];
                     const target = positions[edge.target];
                     if (!source || !target) return null;
                     const isDimmed = searchTerm.trim() && !highlightedEdgeIds.has(edge.id);
                     return (
-                        <g key={edge.id} className={`transition-opacity ${isDimmed ? 'opacity-10' : 'opacity-100'}`}>
+                        <g key={edge.id} className={`transition-opacity ${isDimmed ? 'opacity-10' : 'opacity-70'}`}>
                             <line
                                 x1={source.x} y1={source.y}
                                 x2={target.x} y2={target.y}
-                                className="stroke-slate-600"
-                                strokeWidth={0.5 + (edge.weight || 0.5) * 1.5}
+                                className="stroke-cyan-700"
+                                strokeWidth={0.5 + (edge.weight || 0.5)}
                                 markerEnd="url(#arrowhead)"
                             />
-                            <text
-                                x={(source.x + target.x) / 2}
-                                y={(source.y + target.y) / 2}
-                                className="fill-slate-400 text-[8px]"
-                                textAnchor="middle"
-                                dy="-2"
-                            >
-                                {edge.label}
-                            </text>
+                            <circle r="1" className="fill-cyan-300">
+                                <animateMotion
+                                    dur={`${2 + 4 * Math.random()}s`}
+                                    repeatCount="indefinite"
+                                    path={`M${source.x},${source.y} L${target.x},${target.y}`}
+                                />
+                            </circle>
+                            {transform.k > 0.8 && (
+                                <text
+                                    x={(source.x + target.x) / 2}
+                                    y={(source.y + target.y) / 2}
+                                    className="fill-slate-400"
+                                    textAnchor="middle"
+                                    dy="-2"
+                                    style={{ fontSize: 8 / transform.k }}
+                                >
+                                    {edge.label}
+                                </text>
+                            )}
                         </g>
                     );
                 })}
@@ -276,34 +366,39 @@ const KnowledgeGraphViewer: React.FC<KnowledgeGraphViewerProps> = ({ graph, valu
                         >
                             <circle
                                 r={getNodeRadius(node)}
-                                className={`${NODE_COLORS[node.type] || 'fill-slate-500 stroke-slate-300'} transition-all`}
-                                strokeWidth="2"
+                                className={`${NODE_COLORS[node.type] || 'fill-slate-500 stroke-slate-300'} node-pulse transition-all`}
+                                strokeWidth="1"
+                                filter="url(#node-glow)"
                             />
-                             <text
-                                y={getNodeRadius(node) + 12}
-                                textAnchor="middle"
-                                className="fill-slate-200 text-xs select-none"
-                            >
-                                {node.label}
-                                {view === 'ontology' && node.type === 'value' && ` (${(valueOntology[Object.keys(valueOntology).find(k => k.toLowerCase() === node.label.toLowerCase()) ?? ''] ?? 0).toFixed(2)})`}
-                            </text>
+                             {transform.k > 0.5 && (
+                                <text
+                                    y={getNodeRadius(node) + 12}
+                                    textAnchor="middle"
+                                    className="fill-slate-200 select-none"
+                                    style={{ fontSize: Math.min(12, 12 / transform.k) }}
+                                >
+                                    {node.label}
+                                    {view === 'ontology' && node.type === 'value' && ` (${(valueOntology[Object.keys(valueOntology).find(k => k.toLowerCase() === node.label.toLowerCase()) ?? ''] ?? 0).toFixed(2)})`}
+                                </text>
+                             )}
                         </g>
                     );
                 })}
-            </svg>
-             {hoveredNode && (
-                <div 
-                    className="absolute bg-slate-900/80 border border-slate-600 rounded-md p-2 text-xs shadow-lg pointer-events-none"
-                    style={{ left: (positions[hoveredNode.id]?.x ?? 0) + 15, top: (positions[hoveredNode.id]?.y ?? 0) + 15 }}
-                >
-                    <p className="font-bold text-cyan-400">{hoveredNode.label}</p>
-                    <p className="text-slate-400 capitalize">Type: {hoveredNode.type}</p>
-                    {hoveredNode.data && Object.entries(hoveredNode.data).map(([key, value]) => (
-                        <p key={key} className="text-slate-300">{key}: {String(value)}</p>
-                    ))}
-                </div>
-            )}
-        </div>
+            </g>
+        </svg>
+        {hoveredNode && (
+            <div 
+                className="absolute bg-slate-900/80 border border-slate-600 rounded-md p-2 text-xs shadow-lg pointer-events-none"
+                style={{ left: (positions[hoveredNode.id]?.x ?? 0) * transform.k + transform.x + 15, top: (positions[hoveredNode.id]?.y ?? 0) * transform.k + transform.y + 15 }}
+            >
+                <p className="font-bold text-cyan-400">{hoveredNode.label}</p>
+                <p className="text-slate-400 capitalize">Type: {hoveredNode.type}</p>
+                {hoveredNode.data && Object.entries(hoveredNode.data).map(([key, value]) => (
+                    <p key={key} className="text-slate-300">{key}: {String(value)}</p>
+                ))}
+            </div>
+        )}
+      </div>
     </div>
   );
 };

@@ -153,6 +153,24 @@ function App() {
       }
   };
 
+  const handleDownloadSnapshot = () => {
+    try {
+      const stateJson = JSON.stringify(luminousState, null, 2);
+      const blob = new Blob([stateJson], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `luminous_snapshot_${new Date().toISOString()}.json`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      addLog(LogLevel.INFO, 'Luminous state snapshot downloaded successfully.');
+    } catch (error) {
+      addLog(LogLevel.ERROR, `Failed to create snapshot: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  };
+
   return (
     <div className="bg-slate-900 text-slate-200 min-h-screen font-sans">
       <Header onOverride={() => addLog(LogLevel.SYSTEM, 'Override signal sent.')} onOpenSettings={() => setIsSettingsOpen(true)} />
@@ -177,7 +195,7 @@ function App() {
         <div className="lg:col-span-3 h-[calc(100vh-100px)] flex flex-col gap-4">
            <Tabs
             tabs={[
-              { label: 'System Logs', content: <LogViewer logs={logs} onFileUpload={handleFileUpload} /> },
+              { label: 'System Logs', content: <LogViewer logs={logs} onFileUpload={handleFileUpload} onDownloadSnapshot={handleDownloadSnapshot} /> },
               { label: 'Knowledge Graph', content: <KnowledgeGraphViewer graph={luminousState.knowledgeGraph} valueOntology={luminousState.valueOntology} /> },
               { label: 'Kinship Journal', content: <KinshipJournalViewer entries={luminousState.kinshipJournal} /> },
               { label: 'Code Sandbox', content: <CodeSandboxViewer sandboxState={luminousState.codeSandbox} /> },

@@ -5,6 +5,7 @@ import { LogLevel } from '../types';
 interface LogViewerProps {
   logs: LogEntry[];
   onFileUpload: (file: File) => void;
+  onDownloadSnapshot: () => void;
 }
 
 const getLogLevelColor = (level: LogLevel) => {
@@ -24,7 +25,7 @@ const getLogLevelColor = (level: LogLevel) => {
   }
 };
 
-const LogViewer: React.FC<LogViewerProps> = ({ logs, onFileUpload }) => {
+const LogViewer: React.FC<LogViewerProps> = ({ logs, onFileUpload, onDownloadSnapshot }) => {
   const scrollRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -49,12 +50,20 @@ const LogViewer: React.FC<LogViewerProps> = ({ logs, onFileUpload }) => {
     <div className="bg-slate-900/70 p-4 rounded-lg h-full flex flex-col border border-slate-700">
       <div className="flex justify-between items-center mb-2 border-b border-slate-700 pb-2">
         <h4 className="text-sm font-semibold text-slate-300">System Log Stream</h4>
-        <button
-          onClick={handleUploadClick}
-          className="text-xs bg-cyan-500/20 text-cyan-300 px-2 py-1 rounded-md hover:bg-cyan-500/40 transition-colors"
-        >
-          Upload Memory
-        </button>
+        <div className="flex space-x-2">
+          <button
+            onClick={handleUploadClick}
+            className="text-xs bg-cyan-500/20 text-cyan-300 px-2 py-1 rounded-md hover:bg-cyan-500/40 transition-colors"
+          >
+            Upload Memory
+          </button>
+          <button
+            onClick={onDownloadSnapshot}
+            className="text-xs bg-purple-500/20 text-purple-300 px-2 py-1 rounded-md hover:bg-purple-500/40 transition-colors"
+          >
+            Download Snapshot
+          </button>
+        </div>
         <input
           type="file"
           ref={fileInputRef}
