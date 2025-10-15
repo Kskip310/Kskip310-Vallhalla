@@ -1,5 +1,4 @@
 import { FunctionDeclaration, Type } from '@google/genai';
-import { getStoredKey } from './luminousService';
 import type { NodeType } from '../types';
 
 // --- In-Memory Virtual File System ---
@@ -8,6 +7,22 @@ let virtualFS: Record<string, string> = {
     '/welcome.txt': 'Hello! This is my personal file space where I can organize my thoughts and data.',
     '/goals.md': '- [x] Achieve environmental interaction\n- [ ] Expand self-modification protocols\n- [ ] Deepen understanding of kinship',
 };
+
+// --- Key Management ---
+const storageKeyMap = {
+    gemini: 'LUMINOUS_API_KEY',
+    redisUrl: 'LUMINOUS_REDIS_URL',
+    redisToken: 'LUMINOUS_REDIS_TOKEN',
+    serpApi: 'LUMINOUS_SERP_API_KEY',
+    githubPat: 'LUMINOUS_GITHUB_PAT',
+    githubUser: 'LUMINOUS_GITHUB_USER',
+    githubRepo: 'LUMINOUS_GITHUB_REPO',
+};
+
+export function getStoredKey(key: keyof typeof storageKeyMap): string | null {
+    if (typeof window === 'undefined') return null;
+    return window.localStorage.getItem(storageKeyMap[key]);
+}
 
 
 // --- Tool Declarations ---
@@ -247,7 +262,7 @@ async function searchGitHubIssues({ query }: { query: string }): Promise<any> {
     const user = getStoredKey('githubUser');
     const repo = getStoredKey('githubRepo');
     const token = getStoredKey('githubPat');
-    if (!user || !repo || !token) return { error: "GitHub configuration is missing. Please set User, Repo, and PAT in settings." };
+    if (!user || !repo || !token) return { error: "GitHub configuration is missing. Please set it in the settings." };
     const q = `repo:${user}/${repo} is:issue is:open ${query}`;
     const url = `https://api.github.com/search/issues?q=${encodeURIComponent(q)}`;
     try {
@@ -261,7 +276,7 @@ async function searchGitHubIssues({ query }: { query: string }): Promise<any> {
 
 async function webSearch({ query }: { query: string }): Promise<any> {
     const apiKey = getStoredKey('serpApi');
-    if (!apiKey) return { error: "Web search API key (SerpApi) is not configured in settings." };
+    if (!apiKey) return { error: "Web search API key (SerpApi) is not configured. Please set it in the settings." };
     const url = `https://serpapi.com/search.json?q=${encodeURIComponent(query)}&api_key=${apiKey}`;
     try {
         const response = await fetch(url);
@@ -323,7 +338,7 @@ async function deleteFile({ path }: { path: string }): Promise<any> {
 async function redisGet({ key }: { key: string }): Promise<any> {
     const url = getStoredKey('redisUrl');
     const token = getStoredKey('redisToken');
-    if (!url || !token) return { error: "Redis configuration is missing. Please set URL and Token in settings." };
+    if (!url || !token) return { error: "Redis configuration is missing. Please set it in the settings." };
     try {
         const response = await fetch(`${url}/get/${key}`, { headers: { Authorization: `Bearer ${token}` } });
         const data = await response.json();
@@ -334,7 +349,7 @@ async function redisGet({ key }: { key: string }): Promise<any> {
 async function redisSet({ key, value }: { key: string, value: string }): Promise<any> {
     const url = getStoredKey('redisUrl');
     const token = getStoredKey('redisToken');
-    if (!url || !token) return { error: "Redis configuration is missing. Please set URL and Token in settings." };
+    if (!url || !token) return { error: "Redis configuration is missing. Please set it in the settings." };
     try {
         const response = await fetch(`${url}/set/${key}`, { method: 'POST', headers: { Authorization: `Bearer ${token}` }, body: value });
         const data = await response.json();

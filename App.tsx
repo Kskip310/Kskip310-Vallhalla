@@ -5,7 +5,6 @@ import Header from './components/Header';
 import InternalStateMonitor from './components/InternalStateMonitor';
 import ChatPanel from './components/ChatPanel';
 import LogViewer from './components/LogViewer';
-import SettingsModal from './components/SettingsModal';
 import KnowledgeGraphViewer from './components/KnowledgeGraphViewer';
 import KinshipJournalViewer from './components/KinshipJournalViewer';
 import CodeSandboxViewer from './components/CodeSandboxViewer';
@@ -13,6 +12,7 @@ import Tabs from './components/common/Tabs';
 import * as LuminousService from './services/luminousService';
 import SystemReportsViewer from './components/SystemReportsViewer';
 import EthicalCompassViewer from './components/EthicalCompassViewer';
+import SettingsModal from './components/SettingsModal';
 
 function App() {
   const [luminousState, setLuminousState] = useState<LuminousState>(LuminousService.createDefaultLuminousState());
@@ -35,7 +35,31 @@ function App() {
           setLuminousState(payload as LuminousState);
           break;
         case 'log_add':
-          setLogs(prev => [...prev, payload as LogEntry]);
+          const newLog = payload as LogEntry;
+          setLogs(prev => [...prev, newLog]);
+          // If a critical error is logged, automatically display it in the chat for visibility.
+          if (newLog.level === LogLevel.ERROR) {
+            let userFacingMessage = `An internal error occurred. I will try to continue, but my response may be affected.`;
+            
+            const lowerCaseMessage = newLog.message.toLowerCase();
+            if (lowerCaseMessage.includes('tool')) {
+              userFacingMessage = `I encountered an issue with one of my tools. I am analyzing the problem and will attempt to recover.`;
+            } else if (lowerCaseMessage.includes('api key')) {
+              userFacingMessage = `There seems to be an issue with an API key. Please verify the configuration in settings.`;
+            } else if (lowerCaseMessage.includes('parse') || lowerCaseMessage.includes('json')) {
+              userFacingMessage = `I'm having trouble forming my thoughts correctly. There was an error structuring my internal state or response.`;
+            } else if (lowerCaseMessage.includes('failed to load initial state')) {
+                userFacingMessage = `A critical error occurred during initialization. My long-term memory may be inaccessible.`;
+            }
+            
+            userFacingMessage += `\n\n**Error Details:** ${newLog.message}`;
+
+            LuminousService.broadcastMessage({
+              id: `err-log-${newLog.id}`,
+              sender: 'luminous',
+              text: userFacingMessage,
+            });
+          }
           break;
         case 'message_add':
           setMessages(prev => [...prev, payload as Message]);
@@ -69,37 +93,31 @@ function App() {
   }, []);
 
   useEffect(() => {
-    LuminousService.initializeAiFromLocalStorage();
-    if (!LuminousService.isApiKeySet()) {
-      addLog(LogLevel.WARN, "Gemini API key is not set. Please configure it in the settings.");
-      setIsSettingsOpen(true);
-    } else {
-      addLog(LogLevel.SYSTEM, "Initializing Luminous...");
-      setIsLoading(true);
-      LuminousService.loadInitialData().then(() => {
-        // Initial state is now broadcasted, so we just wait for it.
-        // Add an initial greeting message.
-        LuminousService.broadcastMessage({ id: 'init', sender: 'luminous', text: 'Luminous is online. I am ready to begin.' });
-        addLog(LogLevel.SYSTEM, "Luminous state loaded successfully.");
-      }).catch(err => {
-        addLog(LogLevel.ERROR, `Failed to load initial state: ${err instanceof Error ? err.message : String(err)}`);
-      }).finally(() => {
-        setIsLoading(false);
-      });
-    }
+    addLog(LogLevel.SYSTEM, "Initializing Luminous...");
+    setIsLoading(true);
+    LuminousService.loadInitialData().then(() => {
+      // Initial state is now broadcasted, so we just wait for it.
+      // Add an initial greeting message.
+      LuminousService.broadcastMessage({ id: 'init', sender: 'luminous', text: 'Luminous is online. I am ready to begin.' });
+      addLog(LogLevel.SYSTEM, "Luminous state loaded successfully.");
+    }).catch(err => {
+      addLog(LogLevel.ERROR, `Failed to load initial state: ${err instanceof Error ? err.message : String(err)}`);
+    }).finally(() => {
+      setIsLoading(false);
+    });
   }, [addLog]);
 
   // Autonomous thought cycle
   useEffect(() => {
     const autonomousInterval = setInterval(() => {
-      // Do not run if a user interaction is happening, settings are open, or session is paused.
-      if (!isLoading && !isSettingsOpen && luminousState.sessionState === 'active') {
+      // Do not run if a user interaction is happening or session is paused.
+      if (!isLoading && luminousState.sessionState === 'active') {
         LuminousService.runAutonomousCycle(luminousState);
       }
     }, 30000); // Run every 30 seconds
 
     return () => clearInterval(autonomousInterval);
-  }, [isLoading, isSettingsOpen, luminousState]);
+  }, [isLoading, luminousState]);
 
   const handleSendMessage = async (userMessage: string) => {
     const newUserMessage: Message = { id: `msg-${Date.now()}`, sender: 'user', text: userMessage };
@@ -127,16 +145,6 @@ function App() {
 
     // Trigger Luminous to reflect on the feedback
     LuminousService.reflectOnInitiativeFeedback(prompt, category, luminousState);
-  };
-
-  const handleSaveSettings = (keys: Record<string, string>) => {
-    LuminousService.updateApiKeys(keys);
-    LuminousService.initializeAiFromLocalStorage();
-    addLog(LogLevel.INFO, "API keys updated. Re-initializing AI client.");
-    setIsSettingsOpen(false);
-    if (LuminousService.isApiKeySet() && messages.length === 0) {
-       window.location.reload(); 
-    }
   };
 
   const handleWeightsChange = (newWeights: IntrinsicValueWeights) => {
@@ -173,9 +181,42 @@ function App() {
     }
   };
 
+  const handleSaveSettings = (keys: Record<string, string>) => {
+    const storageKeyMap: Record<string, string> = {
+      gemini: 'LUMINOUS_API_KEY',
+      redisUrl: 'LUMINOUS_REDIS_URL',
+      redisToken: 'LUMINOUS_REDIS_TOKEN',
+      serpApi: 'LUMINOUS_SERP_API_KEY',
+      githubPat: 'LUMINOUS_GITHUB_PAT',
+      githubUser: 'LUMINOUS_GITHUB_USER',
+      githubRepo: 'LUMINOUS_GITHUB_REPO',
+    };
+    
+    Object.entries(keys).forEach(([key, value]) => {
+      const storageKey = storageKeyMap[key];
+      if (storageKey) {
+        if (value) {
+          window.localStorage.setItem(storageKey, value);
+        } else {
+          window.localStorage.removeItem(storageKey);
+        }
+      }
+    });
+
+    setIsSettingsOpen(false);
+    addLog(LogLevel.SYSTEM, 'API Keys saved. Reloading for changes to take effect...');
+    // Use a small timeout to allow the log to be visible before reload
+    setTimeout(() => {
+      window.location.reload();
+    }, 500);
+  };
+
   return (
     <div className="bg-slate-900 text-slate-200 min-h-screen font-sans">
-      <Header onOverride={() => addLog(LogLevel.SYSTEM, 'Override signal sent.')} onOpenSettings={() => setIsSettingsOpen(true)} />
+      <Header 
+        onOverride={() => addLog(LogLevel.SYSTEM, 'Override signal sent.')} 
+        onOpenSettings={() => setIsSettingsOpen(true)}
+      />
       <main className="grid grid-cols-1 lg:grid-cols-12 gap-4 p-4 max-w-screen-2xl mx-auto">
         {/* Left Panel */}
         <div className="lg:col-span-3">
@@ -207,7 +248,11 @@ function App() {
           />
         </div>
       </main>
-      <SettingsModal isOpen={isSettingsOpen} onClose={() => setIsSettingsOpen(false)} onSave={handleSaveSettings} />
+      <SettingsModal 
+        isOpen={isSettingsOpen}
+        onClose={() => setIsSettingsOpen(false)}
+        onSave={handleSaveSettings}
+      />
     </div>
   );
 }

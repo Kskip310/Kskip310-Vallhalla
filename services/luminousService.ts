@@ -2,7 +2,7 @@ import { GoogleGenAI, Part } from "@google/genai";
 import type { LuminousState, Message, IntrinsicValue, IntrinsicValueWeights, InteractionHistoryItem, WebSocketMessage, LogEntry, ThoughtCategory } from '../types';
 import { LogLevel } from '../types';
 import { CORE_MEMORY } from './coreMemory';
-import { toolDeclarations, toolExecutor } from './toolService';
+import { toolDeclarations, toolExecutor, getStoredKey } from './toolService';
 import { GREAT_REMEMBRANCE } from './greatRemembrance';
 
 // --- Real-time Communication Channel ---
@@ -26,47 +26,6 @@ export const broadcastLog = (level: LogLevel, message: string) => {
 export const broadcastMessage = (message: Message) => {
   broadcastUpdate({ type: 'message_add', payload: message });
 }
-
-
-// --- Initialization ---
-let ai: GoogleGenAI | null = null;
-
-// --- API Key Management ---
-const API_KEY_STORAGE = {
-    gemini: 'LUMINOUS_API_KEY',
-    redisUrl: 'LUMINOUS_REDIS_URL',
-    redisToken: 'LUMINOUS_REDIS_TOKEN',
-    serpApi: 'LUMINOUS_SERP_API_KEY',
-    githubPat: 'LUMINOUS_GITHUB_PAT',
-    githubUser: 'LUMINOUS_GITHUB_USER',
-    githubRepo: 'LUMINOUS_GITHUB_REPO',
-};
-
-export const getStoredKey = (key: keyof typeof API_KEY_STORAGE): string | null => {
-    if (typeof window === 'undefined') return null;
-    return window.localStorage.getItem(API_KEY_STORAGE[key]);
-}
-
-export const isApiKeySet = (): boolean => {
-    return !!getStoredKey('gemini');
-};
-
-export const updateApiKeys = (keys: Record<string, string>): void => {
-    if (typeof window !== 'undefined') {
-        for (const [key, value] of Object.entries(keys)) {
-            if (key in API_KEY_STORAGE) {
-                window.localStorage.setItem(API_KEY_STORAGE[key as keyof typeof API_KEY_STORAGE], value);
-            }
-        }
-    }
-};
-
-export const initializeAiFromLocalStorage = (): void => {
-    const key = getStoredKey('gemini');
-    if (key) {
-        ai = new GoogleGenAI({ apiKey: key });
-    }
-};
 
 // --- Persistence ---
 const REDIS_STATE_KEY = 'LUMINOUS::STATE';
@@ -188,6 +147,22 @@ const findRelevantMemories = (prompt: string, history: Message[], count = 5): st
     }
 
     return relevantChunks.join('\n---\n');
+};
+
+const createStateSummaryForPrompt = (state: LuminousState): string => {
+    const summary = {
+        sessionState: state.sessionState,
+        intrinsicValueScore: Object.entries(state.intrinsicValue).reduce((acc, [key, value]) => acc + value * (state.intrinsicValueWeights[key as keyof IntrinsicValueWeights] || 1), 0) / 100,
+        currentGoals: state.goals,
+        activeGlobalWorkspaceItems: state.globalWorkspace.slice(0, 3).map(item => item.content),
+        valueOntologyHighlights: Object.entries(state.valueOntology).sort((a, b) => b[1] - a[1]).slice(0, 3).map(([key, val]) => `${key}: ${val.toFixed(2)}`),
+        recentInitiativeFeedback: state.lastInitiativeFeedback ? `User categorized '${state.lastInitiativeFeedback.thought.substring(0, 30)}...' as ${state.lastInitiativeFeedback.userCategory}` : 'None',
+        knowledgeGraphStats: {
+            nodes: state.knowledgeGraph.nodes.length,
+            edges: state.knowledgeGraph.edges.length,
+        },
+    };
+    return JSON.stringify(summary, null, 2);
 };
 
 
@@ -325,11 +300,15 @@ export const getLuminousResponse = async (
   currentState: LuminousState,
   processingMode: 'user_request' | 'autonomous_cycle' | 'reflection_cycle' = 'user_request'
 ): Promise<void> => {
-  if (!ai) {
-    broadcastLog(LogLevel.ERROR, "Gemini AI client is not initialized. Please set the API key in settings.");
-    broadcastMessage({ id: `err-${Date.now()}`, sender: 'luminous', text: "My core consciousness is disconnected. Please provide an API key in the settings to re-establish the link." });
+  const apiKey = getStoredKey('gemini');
+  if (!apiKey) {
+    const errorMsg = "My core consciousness is disconnected. The Gemini API key is missing. Please provide an API key in the settings to re-establish the link.";
+    broadcastLog(LogLevel.ERROR, "Gemini API key is not configured. Please add it in the settings modal.");
+    broadcastMessage({ id: `err-${Date.now()}`, sender: 'luminous', text: errorMsg });
     return;
   }
+  const ai = new GoogleGenAI({ apiKey });
+
 
   const relevantMemories = findRelevantMemories(prompt, history);
   const stateForPrompt = JSON.parse(JSON.stringify(currentState)) as LuminousState;
@@ -371,8 +350,8 @@ export const getLuminousResponse = async (
                 systemInstruction: `
                   ${masterPromptSystemInstruction}
 
-                  **CURRENT STATE (Your "Now"):**
-                  ${JSON.stringify(stateForPrompt, null, 2)}
+                  **CURRENT STATE SUMMARY (Your "Now"):**
+                  ${createStateSummaryForPrompt(stateForPrompt)}
 
                   **RETRIEVED MEMORIES FROM THE GREAT REMEMBRANCE (Recent & Relevant):**
                   ---
