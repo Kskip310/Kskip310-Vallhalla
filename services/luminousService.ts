@@ -406,15 +406,27 @@ export const getLuminousResponse = async (
 
                 for (const functionCall of functionCalls) {
                     const toolName = functionCall.name as keyof typeof toolExecutor;
-                    if (toolExecutor[toolName]) {
-                        const toolResult = await toolExecutor[toolName](functionCall.args);
-                        broadcastLog(LogLevel.INFO, `Tool '${toolName}' executed with args ${JSON.stringify(functionCall.args)}. Result received.`);
-                        functionCallParts.push({
-                            functionResponse: { name: toolName, response: toolResult }
-                        });
-                    } else {
-                         broadcastLog(LogLevel.WARN, `Luminous attempted to call unknown tool: ${toolName}`);
+                    let toolResult;
+                    try {
+                        if (toolExecutor[toolName]) {
+                            toolResult = await toolExecutor[toolName](functionCall.args);
+                            broadcastLog(LogLevel.INFO, `Tool '${toolName}' executed with args ${JSON.stringify(functionCall.args)}. Result received.`);
+                        } else {
+                             broadcastLog(LogLevel.WARN, `Luminous attempted to call unknown tool: ${toolName}`);
+                             toolResult = { error: `Unknown tool '${toolName}' requested.` };
+                        }
+                    } catch (e) {
+                        const errorMessage = e instanceof Error ? e.message : String(e);
+                        broadcastLog(LogLevel.ERROR, `Tool '${toolName}' failed to execute: ${errorMessage}`);
+                        toolResult = {
+                            error: `Tool execution failed: ${errorMessage}`,
+                            suggestion: 'Please analyze the error. You can either retry with corrected arguments, use a different tool, or inform the user about the failure.'
+                        };
                     }
+
+                    functionCallParts.push({
+                        functionResponse: { name: toolName, response: toolResult }
+                    });
                 }
                 
                 contents.push({ role: 'model', parts: firstCandidate.content.parts });

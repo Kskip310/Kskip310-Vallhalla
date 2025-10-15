@@ -397,6 +397,7 @@ async function addGraphEdge({ source, target, label, weight }: { source: string,
 // --- Tool Executor ---
 
 export const toolExecutor = {
+    finalAnswer: async () => ({}), // finalAnswer is handled specially in the main loop
     codeRedAlert,
     searchGitHubIssues,
     webSearch,
