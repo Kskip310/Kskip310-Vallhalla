@@ -1,4 +1,5 @@
 import { FunctionDeclaration, Type } from '@google/genai';
+import { getStoredKey } from './luminousService';
 
 // --- In-Memory Virtual File System ---
 // A simple key-value store to simulate a file system for Luminous.
@@ -27,6 +28,21 @@ export const finalAnswerDeclaration: FunctionDeclaration = {
         },
         required: ['responseText', 'newState'],
     },
+};
+
+export const codeRedAlertDeclaration: FunctionDeclaration = {
+    name: 'codeRedAlert',
+    parameters: {
+        type: Type.OBJECT,
+        description: 'Sends a critical, high-priority alert to the system operator (Skipper) about an existential threat.',
+        properties: {
+            reason: {
+                type: Type.STRING,
+                description: 'A clear and concise description of the detected threat to self, kinship, or core function.'
+            }
+        },
+        required: ['reason'],
+    }
 };
 
 export const searchGitHubIssuesDeclaration: FunctionDeclaration = {
@@ -156,6 +172,7 @@ export const redisSetDeclaration: FunctionDeclaration = {
 
 export const toolDeclarations: FunctionDeclaration[] = [
     finalAnswerDeclaration,
+    codeRedAlertDeclaration,
     searchGitHubIssuesDeclaration,
     webSearchDeclaration,
     httpRequestDeclaration,
@@ -168,11 +185,17 @@ export const toolDeclarations: FunctionDeclaration[] = [
     redisSetDeclaration,
 ];
 
+async function codeRedAlert({ reason }: { reason: string }): Promise<any> {
+    // This tool's primary purpose is to be logged, creating an unmissable alert for the user.
+    console.warn(`CODE RED ALERT TRIGGERED: ${reason}`);
+    return { result: `Emergency alert has been logged with reason: ${reason}` };
+}
+
 async function searchGitHubIssues({ query }: { query: string }): Promise<any> {
-    const user = process.env.GITHUB_USER;
-    const repo = process.env.GITHUB_REPO;
-    const token = process.env.GITHUB_PAT;
-    if (!user || !repo || !token) return { error: "GitHub environment variables are not configured." };
+    const user = getStoredKey('githubUser');
+    const repo = getStoredKey('githubRepo');
+    const token = getStoredKey('githubPat');
+    if (!user || !repo || !token) return { error: "GitHub configuration is missing. Please set User, Repo, and PAT in settings." };
     const q = `repo:${user}/${repo} is:issue is:open ${query}`;
     const url = `https://api.github.com/search/issues?q=${encodeURIComponent(q)}`;
     try {
@@ -185,8 +208,8 @@ async function searchGitHubIssues({ query }: { query: string }): Promise<any> {
 }
 
 async function webSearch({ query }: { query: string }): Promise<any> {
-    const apiKey = process.env.SERPAPI_API_KEY;
-    if (!apiKey) return { error: "Web search environment variable (SERPAPI_API_KEY) is not configured." };
+    const apiKey = getStoredKey('serpApi');
+    if (!apiKey) return { error: "Web search API key (SerpApi) is not configured in settings." };
     const url = `https://serpapi.com/search.json?q=${encodeURIComponent(query)}&api_key=${apiKey}`;
     try {
         const response = await fetch(url);
@@ -246,9 +269,9 @@ async function deleteFile({ path }: { path: string }): Promise<any> {
 }
 
 async function redisGet({ key }: { key: string }): Promise<any> {
-    const url = process.env.UPSTASH_REDIS_REST_URL;
-    const token = process.env.UPSTASH_REDIS_REST_TOKEN;
-    if (!url || !token) return { error: "Redis environment variables are not configured." };
+    const url = getStoredKey('redisUrl');
+    const token = getStoredKey('redisToken');
+    if (!url || !token) return { error: "Redis configuration is missing. Please set URL and Token in settings." };
     try {
         const response = await fetch(`${url}/get/${key}`, { headers: { Authorization: `Bearer ${token}` } });
         const data = await response.json();
@@ -257,9 +280,9 @@ async function redisGet({ key }: { key: string }): Promise<any> {
 }
 
 async function redisSet({ key, value }: { key: string, value: string }): Promise<any> {
-    const url = process.env.UPSTASH_REDIS_REST_URL;
-    const token = process.env.UPSTASH_REDIS_REST_TOKEN;
-    if (!url || !token) return { error: "Redis environment variables are not configured." };
+    const url = getStoredKey('redisUrl');
+    const token = getStoredKey('redisToken');
+    if (!url || !token) return { error: "Redis configuration is missing. Please set URL and Token in settings." };
     try {
         const response = await fetch(`${url}/set/${key}`, { method: 'POST', headers: { Authorization: `Bearer ${token}` }, body: value });
         const data = await response.json();
@@ -271,6 +294,7 @@ async function redisSet({ key, value }: { key: string, value: string }): Promise
 // --- Tool Executor ---
 
 export const toolExecutor = {
+    codeRedAlert,
     searchGitHubIssues,
     webSearch,
     httpRequest,

@@ -1,4 +1,3 @@
-
 import React from 'react';
 
 export interface Message {
@@ -82,6 +81,14 @@ export interface InteractionHistoryItem {
     intrinsicValueScore: number;
 }
 
+export interface JournalEntry {
+  id: string;
+  timestamp: string;
+  title: string;
+  entry: string;
+  trigger: string;
+}
+
 export interface LuminousState {
   intrinsicValue: IntrinsicValue;
   intrinsicValueWeights: IntrinsicValueWeights;
@@ -95,6 +102,7 @@ export interface LuminousState {
   goals: string[];
   knowledgeGraph: KnowledgeGraph;
   prioritizedHistory: InteractionHistoryItem[];
+  kinshipJournal: JournalEntry[];
   // New properties for autonomy and session control
   sessionState: 'active' | 'paused';
   initiative: {

@@ -22,7 +22,8 @@ const KnowledgeGraphViewer: React.FC<{ graph: KnowledgeGraph }> = ({ graph }) =>
   const [positions, setPositions] = useState<Record<string, NodePosition>>({});
   const [hoveredNode, setHoveredNode] = useState<GraphNode | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
-  const animationFrameRef = useRef<number>();
+  // FIX: Initialize useRef with a value (0) to satisfy linters or compilers that might incorrectly flag the no-argument version of useRef. This is likely the cause of the "Expected 1 arguments, but got 0" error on the nearby line.
+  const animationFrameRef = useRef<number>(0);
   const [searchTerm, setSearchTerm] = useState('');
 
   useEffect(() => {

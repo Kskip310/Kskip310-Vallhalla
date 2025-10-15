@@ -1,10 +1,12 @@
 import React from 'react';
+import SettingsIcon from './icons/SettingsIcon';
 
 interface HeaderProps {
   onOverride: () => void;
+  onOpenSettings: () => void;
 }
 
-const Header: React.FC<HeaderProps> = ({ onOverride }) => {
+const Header: React.FC<HeaderProps> = ({ onOverride, onOpenSettings }) => {
   return (
     <header className="p-4 bg-slate-900/80 backdrop-blur-md border-b border-slate-700 flex items-center justify-between shadow-lg sticky top-0 z-10">
       <div className="flex items-center">
@@ -18,6 +20,13 @@ const Header: React.FC<HeaderProps> = ({ onOverride }) => {
           title="Send an interrupt signal to Luminous to regain attention."
         >
           Override Signal
+        </button>
+         <button
+          onClick={onOpenSettings}
+          className="p-2 text-slate-400 rounded-md hover:bg-slate-700 hover:text-cyan-400 transition-colors"
+          title="Configure API Key"
+        >
+          <SettingsIcon />
         </button>
         <div className="flex items-center space-x-2 text-xs text-green-400">
           <span className="relative flex h-2 w-2">

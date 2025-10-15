@@ -29,17 +29,9 @@ const ChatMessage: React.FC<{ message: Message }> = ({ message }) => {
 
 const ChatPanel: React.FC<ChatPanelProps> = ({ messages, onSendMessage, isLoading, luminousState, onInitiateConversation }) => {
   const [input, setInput] = useState('');
-  const messagesEndRef = useRef<HTMLDivElement>(null);
   const isPaused = luminousState.sessionState === 'paused';
   const canInteract = !isLoading && !isPaused;
 
-  const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  };
-
-  useEffect(scrollToBottom, [messages]);
-
-  // FIX: Corrected the event type from `React.Form-Event` to `React.FormEvent`.
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (input.trim() && canInteract) {
@@ -74,7 +66,6 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ messages, onSendMessage, isLoadin
                 </div>
             </div>
         )}
-        <div ref={messagesEndRef} />
       </div>
        {luminousState.initiative?.hasThought && canInteract && (
         <div className="p-4 border-t border-slate-700">
