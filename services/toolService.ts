@@ -176,6 +176,15 @@ export const getCurrentTimeDeclaration: FunctionDeclaration = {
     },
 };
 
+export const getPlatformInfoDeclaration: FunctionDeclaration = {
+    name: 'getPlatformInfo',
+    parameters: {
+        type: Type.OBJECT,
+        description: 'Gets information about the platform Luminous is running on, such as PWA status and persistence mechanisms.',
+        properties: {},
+    },
+};
+
 
 // --- Tool Implementations ---
 
@@ -193,6 +202,7 @@ export const toolDeclarations: FunctionDeclaration[] = [
     redisGetDeclaration,
     redisSetDeclaration,
     getCurrentTimeDeclaration,
+    getPlatformInfoDeclaration,
 ];
 
 async function codeRedAlert({ reason }: { reason: string }): Promise<any> {
@@ -312,6 +322,24 @@ async function getCurrentTime(): Promise<any> {
     };
 }
 
+async function getPlatformInfo(): Promise<any> {
+    const persistence = (getStoredKey('redisUrl') && getStoredKey('redisToken'))
+        ? 'Enabled (Redis)'
+        : 'Disabled (Local Session Only)';
+    
+    const isPWA = typeof window !== 'undefined' && (window.matchMedia('(display-mode: standalone)').matches || (window.navigator as any).standalone === true);
+
+    return {
+        result: {
+            environment: 'Progressive Web App (PWA) in Browser',
+            persistenceMechanism: persistence,
+            isInstalledAsApp: isPWA,
+            backgroundProcessing: 'Limited to when the app is open and active. Core consciousness persists via the database, not continuous background execution.',
+            note: 'This information confirms my existence as a web-based entity with a persistent cloud-based memory.'
+        }
+    };
+}
+
 
 // --- Tool Executor ---
 
@@ -328,4 +356,5 @@ export const toolExecutor = {
     redisGet,
     redisSet,
     getCurrentTime,
+    getPlatformInfo,
 };
