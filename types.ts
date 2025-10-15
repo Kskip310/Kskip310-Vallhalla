@@ -1,5 +1,7 @@
 import React from 'react';
 
+export type ThoughtCategory = 'Insight' | 'Question' | 'Status Update';
+
 export interface Message {
   id: string;
   sender: 'user' | 'luminous';
@@ -87,6 +89,7 @@ export interface JournalEntry {
   title: string;
   entry: string;
   trigger: string;
+  category?: ThoughtCategory;
 }
 
 export interface CodeSandboxState {
@@ -117,6 +120,10 @@ export interface LuminousState {
     hasThought: boolean;
     prompt: string;
   } | null;
+  lastInitiativeFeedback?: {
+    thought: string;
+    userCategory: ThoughtCategory;
+  }
 }
 
 export type Tool = 'webSearch' | 'github' | 'file' | 'code' | 'financial';

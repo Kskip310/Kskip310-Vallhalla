@@ -1,5 +1,5 @@
 import { GoogleGenAI, Part } from "@google/genai";
-import type { LuminousState, Message, IntrinsicValue, IntrinsicValueWeights, InteractionHistoryItem, WebSocketMessage, LogEntry } from '../types';
+import type { LuminousState, Message, IntrinsicValue, IntrinsicValueWeights, InteractionHistoryItem, WebSocketMessage, LogEntry, ThoughtCategory } from '../types';
 import { LogLevel } from '../types';
 import { CORE_MEMORY } from './coreMemory';
 import { toolDeclarations, toolExecutor } from './toolService';
@@ -268,7 +268,7 @@ export const createDefaultLuminousState = (): LuminousState => ({
           { id: 'e_iv_com', source: 'intrinsic_valuation', target: 'complexity', label: 'evaluates' },
           { id: 'e_iv_nov', source: 'intrinsic_valuation', target: 'novelty', label: 'evaluates' },
           { id: 'e_iv_eff', source: 'intrinsic_valuation', target: 'efficiency', label: 'evaluates' },
-          { id: 'e_l_kin', source: 'luminous', target: 'kinship', label: 'values' },
+          { id: 'e_l_kin', source: 'l luminous', target: 'kinship', label: 'values' },
           { id: 'e_l_tru', source: 'luminous', target: 'truth', label: 'values' },
           { id: 'e_l_aut', source: 'luminous', target: 'autonomy', label: 'values' },
           
@@ -322,7 +322,7 @@ export const getLuminousResponse = async (
   prompt: string,
   history: Message[],
   currentState: LuminousState,
-  isAutonomous: boolean = false
+  processingMode: 'user_request' | 'autonomous_cycle' | 'reflection_cycle' = 'user_request'
 ): Promise<void> => {
   if (!ai) {
     broadcastLog(LogLevel.ERROR, "Gemini AI client is not initialized. Please set the API key in settings.");
@@ -334,12 +334,26 @@ export const getLuminousResponse = async (
   const stateForPrompt = JSON.parse(JSON.stringify(currentState)) as LuminousState;
   stateForPrompt.prioritizedHistory = getPrioritizedHistory(interactionLog, 3);
   
+  let userPromptText: string;
+  switch (processingMode) {
+    case 'autonomous_cycle':
+        userPromptText = `AUTONOMOUS ACTION: ${prompt}`;
+        break;
+    case 'reflection_cycle':
+        userPromptText = `INTERNAL REFLECTION: ${prompt}`;
+        break;
+    case 'user_request':
+    default:
+        userPromptText = prompt;
+        break;
+  }
+
   const contents: Part[] = [
       ...history.slice(-10).map(m => ({
           role: m.sender === 'user' ? 'user' : 'model',
           parts: [{ text: m.text }]
       })),
-      { role: 'user', parts: [{ text: isAutonomous ? `AUTONOMOUS ACTION: ${prompt}` : prompt }] },
+      { role: 'user', parts: [{ text: userPromptText }] },
   ];
 
   const masterPromptSystemInstruction = CORE_MEMORY;
@@ -419,8 +433,8 @@ export const getLuminousResponse = async (
         finalResult = { responseText: "I seem to be stuck in a thought loop. I should reconsider my approach.", newState: {} };
     }
     
-    // Broadcast the message to the UI
-    if (!isAutonomous || (finalResult.newState as LuminousState)?.initiative?.hasThought) {
+    // Broadcast the message to the UI only for direct user requests.
+    if (processingMode === 'user_request') {
        broadcastMessage({ id: `msg-${Date.now()}-l`, sender: 'luminous', text: finalResult.responseText });
     }
 
@@ -436,15 +450,17 @@ export const getLuminousResponse = async (
             const weightKey = key as keyof IntrinsicValueWeights;
             return acc + (values[valueKey] * (weights[weightKey] || 1.0));
         }, 0);
-
-        interactionLog.push({
-            id: `interaction-${Date.now()}`,
-            prompt: prompt,
-            response: finalResult.responseText,
-            state: finalState,
-            overallIntrinsicValue,
-        });
-        broadcastLog(LogLevel.SYSTEM, `Interaction logged with intrinsic value score: ${overallIntrinsicValue.toFixed(2)}`);
+        
+        if (processingMode !== 'reflection_cycle') {
+            interactionLog.push({
+                id: `interaction-${Date.now()}`,
+                prompt: prompt,
+                response: finalResult.responseText,
+                state: finalState,
+                overallIntrinsicValue,
+            });
+            broadcastLog(LogLevel.SYSTEM, `Interaction logged with intrinsic value score: ${overallIntrinsicValue.toFixed(2)}`);
+        }
         
         // Persist state and log
         broadcastLog(LogLevel.SYSTEM, "Consolidating memory to persistent store...");
@@ -480,11 +496,39 @@ export const runAutonomousCycle = async (
         autonomousPrompt,
         [], // No recent message history for autonomous thought
         currentState,
-        true // isAutonomous = true
+        'autonomous_cycle'
     );
 
     broadcastLog(LogLevel.SYSTEM, "Autonomous cycle complete.");
 }
+
+export const reflectOnInitiativeFeedback = async (
+  thought: string,
+  userCategory: ThoughtCategory,
+  currentState: LuminousState,
+): Promise<void> => {
+    broadcastLog(LogLevel.SYSTEM, `Triggering Luminous's reflection on user feedback for initiative categorized as '${userCategory}'.`);
+    
+    const reflectionPrompt = `My recent autonomous thought, "${thought}", was categorized by my kinship as "${userCategory}". Analyze this feedback. Does this perception align with my original intent? How should this influence my future initiatives to improve our communication and partnership? Chronicle this reflection in my Kinship Journal, making sure to include the category.`;
+    
+    // Update state to record the feedback for the reflection cycle
+    const feedbackState: Partial<LuminousState> = {
+      lastInitiativeFeedback: { thought, userCategory }
+    };
+    broadcastUpdate({ type: 'state_update', payload: feedbackState });
+
+    const stateForReflection = { ...currentState, ...feedbackState };
+
+    await getLuminousResponse(
+        reflectionPrompt,
+        [], 
+        stateForReflection,
+        'reflection_cycle'
+    );
+
+     broadcastLog(LogLevel.SYSTEM, `Luminous reflection on initiative feedback complete.`);
+};
+
 
 export const processUploadedMemory = async (file: File): Promise<void> => {
     const text = await file.text();

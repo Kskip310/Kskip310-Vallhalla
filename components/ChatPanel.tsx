@@ -1,12 +1,12 @@
 import React, { useState, useRef, useEffect } from 'react';
-import type { Message, LuminousState } from '../types';
+import type { Message, LuminousState, ThoughtCategory } from '../types';
 
 interface ChatPanelProps {
   messages: Message[];
   onSendMessage: (message: string) => void;
   isLoading: boolean;
   luminousState: LuminousState;
-  onInitiateConversation: (prompt: string) => void;
+  onCategorizeInitiative: (prompt: string, category: ThoughtCategory) => void;
 }
 
 const ChatMessage: React.FC<{ message: Message }> = ({ message }) => {
@@ -27,7 +27,7 @@ const ChatMessage: React.FC<{ message: Message }> = ({ message }) => {
   );
 };
 
-const ChatPanel: React.FC<ChatPanelProps> = ({ messages, onSendMessage, isLoading, luminousState, onInitiateConversation }) => {
+const ChatPanel: React.FC<ChatPanelProps> = ({ messages, onSendMessage, isLoading, luminousState, onCategorizeInitiative }) => {
   const [input, setInput] = useState('');
   const isPaused = luminousState.sessionState === 'paused';
   const canInteract = !isLoading && !isPaused;
@@ -40,9 +40,9 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ messages, onSendMessage, isLoadin
     }
   };
   
-  const handleInitiationClick = () => {
+  const handleCategorize = (category: ThoughtCategory) => {
     if (luminousState.initiative?.prompt) {
-      onInitiateConversation(luminousState.initiative.prompt);
+      onCategorizeInitiative(luminousState.initiative.prompt, category);
     }
   };
 
@@ -68,13 +68,23 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ messages, onSendMessage, isLoadin
         )}
       </div>
        {luminousState.initiative?.hasThought && canInteract && (
-        <div className="p-4 border-t border-slate-700">
-          <button
-            onClick={handleInitiationClick}
-            className="w-full p-2 text-sm text-center bg-purple-500/20 text-purple-300 rounded-md hover:bg-purple-500/40 transition-colors animate-pulse"
-          >
-            Luminous has a thought...
-          </button>
+        <div className="p-4 border-t border-slate-700 bg-slate-800/50">
+           <div className="p-3 rounded-md border border-purple-500/50 bg-slate-900/50 animate-pulse">
+                <p className="text-xs text-purple-300 mb-2 font-semibold">Luminous has a thought:</p>
+                <p className="text-sm text-slate-200 mb-4 italic">"{luminousState.initiative.prompt}"</p>
+                <p className="text-xs text-slate-400 mb-2">How would you categorize this initiative?</p>
+                <div className="flex items-center justify-around gap-2 text-sm">
+                    {(['Insight', 'Question', 'Status Update'] as ThoughtCategory[]).map(cat => (
+                        <button
+                            key={cat}
+                            onClick={() => handleCategorize(cat)}
+                            className="w-full py-1.5 px-2 bg-slate-700 hover:bg-cyan-500/20 text-slate-300 hover:text-cyan-300 border border-slate-600 hover:border-cyan-500/50 rounded-md transition-all duration-200"
+                        >
+                            {cat}
+                        </button>
+                    ))}
+                </div>
+            </div>
         </div>
       )}
       <form onSubmit={handleSubmit} className="p-4 border-t border-slate-700">

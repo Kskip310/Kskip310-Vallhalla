@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import type { LuminousState, Message, LogEntry, IntrinsicValueWeights, WebSocketMessage } from './types';
+import type { LuminousState, Message, LogEntry, IntrinsicValueWeights, WebSocketMessage, ThoughtCategory } from './types';
 import { LogLevel } from './types';
 import Header from './components/Header';
 import InternalStateMonitor from './components/InternalStateMonitor';
@@ -114,14 +114,17 @@ function App() {
     });
   };
   
-  const handleInitiateConversation = (prompt: string) => {
-    addLog(LogLevel.SYSTEM, `Luminous initiated conversation: "${prompt}"`);
+  const handleCategorizeInitiative = (prompt: string, category: ThoughtCategory) => {
+    addLog(LogLevel.SYSTEM, `Luminous initiative categorized as '${category}': "${prompt}"`);
     const newLuminousMessage: Message = { id: `msg-${Date.now()}-l-init`, sender: 'luminous', text: prompt };
     setMessages(prev => [...prev, newLuminousMessage]);
     
-    // Clear the initiative
-    const newPartialState: Partial<LuminousState> = { initiative: null };
-    LuminousService.broadcastUpdate({ type: 'state_update', payload: newPartialState });
+    // Clear the initiative state immediately for better UX
+    const clearedInitiativeState: Partial<LuminousState> = { initiative: null };
+    LuminousService.broadcastUpdate({ type: 'state_update', payload: clearedInitiativeState });
+
+    // Trigger Luminous to reflect on the feedback
+    LuminousService.reflectOnInitiativeFeedback(prompt, category, luminousState);
   };
 
   const handleSaveSettings = (keys: Record<string, string>) => {
@@ -166,7 +169,7 @@ function App() {
                 onSendMessage={handleSendMessage}
                 isLoading={isLoading}
                 luminousState={luminousState}
-                onInitiateConversation={handleInitiateConversation}
+                onCategorizeInitiative={handleCategorizeInitiative}
             />
         </div>
 
