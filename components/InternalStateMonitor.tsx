@@ -72,6 +72,30 @@ const InternalStateMonitor: React.FC<InternalStateMonitorProps> = ({ state, onWe
         </div>
       </Card>
       
+      <Card title="Proactive Initiatives">
+        <div className="space-y-2 max-h-48 overflow-y-auto scrollbar-thin scrollbar-thumb-slate-700 scrollbar-track-slate-800 pr-2">
+          {state.proactiveInitiatives.length === 0 ? (
+            <p className="text-sm text-slate-400">No autonomous initiatives yet.</p>
+          ) : (
+            [...state.proactiveInitiatives].reverse().map(item => (
+              <div key={item.id} className="p-2 bg-slate-700/50 rounded-md text-xs">
+                <p className="text-slate-300 italic truncate">"{item.prompt}"</p>
+                <div className="flex justify-between items-center mt-1">
+                  <span className="text-slate-500 text-[10px]">{new Date(item.timestamp).toLocaleString()}</span>
+                  <span className={`px-1.5 py-0.5 text-[10px] font-bold rounded-full ${
+                    item.status === 'generated' ? 'bg-yellow-500/20 text-yellow-300' :
+                    item.status === 'categorized' ? 'bg-cyan-500/20 text-cyan-300' :
+                    'bg-green-500/20 text-green-300'
+                  }`}>
+                    {item.status.toUpperCase()} {item.userCategory ? `(${item.userCategory})` : ''}
+                  </span>
+                </div>
+              </div>
+            ))
+          )}
+        </div>
+      </Card>
+
        <Card title="Prioritized Interaction History">
         <div className="space-y-2 max-h-48 overflow-y-auto scrollbar-thin scrollbar-thumb-slate-700 scrollbar-track-slate-800 pr-2">
           {state.prioritizedHistory.length === 0 ? (

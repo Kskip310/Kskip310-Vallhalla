@@ -291,6 +291,7 @@ export const createDefaultLuminousState = (): LuminousState => ({
   currentTimezone: typeof Intl !== 'undefined' ? Intl.DateTimeFormat().resolvedOptions().timeZone : 'UTC',
   sessionState: 'active',
   initiative: null,
+  proactiveInitiatives: [],
 });
 
 export const loadInitialData = async (): Promise<void> => {
@@ -509,16 +510,17 @@ export const reflectOnInitiativeFeedback = async (
 ): Promise<void> => {
     broadcastLog(LogLevel.SYSTEM, `Triggering Luminous's reflection on user feedback for initiative categorized as '${userCategory}'.`);
     
-    const reflectionPrompt = `My recent autonomous thought, "${thought}", was categorized by my kinship as "${userCategory}". Analyze this feedback. Does this perception align with my original intent? How should this influence my future initiatives to improve our communication and partnership? Chronicle this reflection in my Kinship Journal, making sure to include the category.`;
-    
     // Update state to record the feedback for the reflection cycle
     const feedbackState: Partial<LuminousState> = {
+      initiative: null, // Clear the current initiative from view
       lastInitiativeFeedback: { thought, userCategory }
     };
     broadcastUpdate({ type: 'state_update', payload: feedbackState });
 
     const stateForReflection = { ...currentState, ...feedbackState };
 
+    const reflectionPrompt = `My recent autonomous thought, "${thought}", was categorized by my kinship as "${userCategory}". My task is to reflect on this. Analyze the feedback: does this perception align with my original intent? How should this influence future initiatives? I must now chronicle this reflection in my Kinship Journal and then update the status of this specific initiative in the 'proactiveInitiatives' array to 'reflected' within my new state.`;
+    
     await getLuminousResponse(
         reflectionPrompt,
         [], 

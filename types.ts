@@ -98,6 +98,18 @@ export interface CodeSandboxState {
   status: 'idle' | 'success' | 'error';
 }
 
+export type InitiativeStatus = 'generated' | 'categorized' | 'reflected';
+
+export interface ProactiveInitiative {
+  id: string;
+  timestamp: string;
+  prompt: string;
+  status: InitiativeStatus;
+  userCategory?: ThoughtCategory;
+}
+
+export type ValueOntology = Record<string, number>;
+
 export interface LuminousState {
   intrinsicValue: IntrinsicValue;
   intrinsicValueWeights: IntrinsicValueWeights;
@@ -107,7 +119,7 @@ export interface LuminousState {
     capabilities: string[];
     limitations: string[];
   };
-  valueOntology: Record<string, number>;
+  valueOntology: ValueOntology;
   goals: string[];
   knowledgeGraph: KnowledgeGraph;
   prioritizedHistory: InteractionHistoryItem[];
@@ -123,7 +135,8 @@ export interface LuminousState {
   lastInitiativeFeedback?: {
     thought: string;
     userCategory: ThoughtCategory;
-  }
+  };
+  proactiveInitiatives: ProactiveInitiative[];
 }
 
 export type Tool = 'webSearch' | 'github' | 'file' | 'code' | 'financial';

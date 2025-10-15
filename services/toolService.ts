@@ -1,5 +1,6 @@
 import { FunctionDeclaration, Type } from '@google/genai';
 import { getStoredKey } from './luminousService';
+import type { NodeType } from '../types';
 
 // --- In-Memory Virtual File System ---
 // A simple key-value store to simulate a file system for Luminous.
@@ -185,6 +186,35 @@ export const getPlatformInfoDeclaration: FunctionDeclaration = {
     },
 };
 
+export const addGraphNodeDeclaration: FunctionDeclaration = {
+    name: 'addGraphNode',
+    parameters: {
+        type: Type.OBJECT,
+        description: 'Proposes a new node to be added to the knowledge graph. The AI must then include this in the newState of the finalAnswer.',
+        properties: {
+            label: { type: Type.STRING, description: 'The display label for the new node.' },
+            type: { type: Type.STRING, description: 'The type of the node. Must be one of: architecture, value, concept, goal, directive, tool.' },
+            data: { type: Type.OBJECT, description: 'Optional key-value data associated with the node.' },
+        },
+        required: ['label', 'type'],
+    },
+};
+
+export const addGraphEdgeDeclaration: FunctionDeclaration = {
+    name: 'addGraphEdge',
+    parameters: {
+        type: Type.OBJECT,
+        description: 'Proposes a new edge to be added to the knowledge graph. The AI must then include this in the newState of the finalAnswer.',
+        properties: {
+            source: { type: Type.STRING, description: 'The ID of the source node for the edge.' },
+            target: { type: Type.STRING, description: 'The ID of the target node for the edge.' },
+            label: { type: Type.STRING, description: 'A label describing the relationship between the nodes.' },
+            weight: { type: Type.NUMBER, description: 'Optional weight of the connection (0.0 to 1.0).' },
+        },
+        required: ['source', 'target', 'label'],
+    },
+};
+
 
 // --- Tool Implementations ---
 
@@ -203,6 +233,8 @@ export const toolDeclarations: FunctionDeclaration[] = [
     redisSetDeclaration,
     getCurrentTimeDeclaration,
     getPlatformInfoDeclaration,
+    addGraphNodeDeclaration,
+    addGraphEdgeDeclaration,
 ];
 
 async function codeRedAlert({ reason }: { reason: string }): Promise<any> {
@@ -340,6 +372,27 @@ async function getPlatformInfo(): Promise<any> {
     };
 }
 
+async function addGraphNode({ label, type, data }: { label: string, type: NodeType, data?: Record<string, any> }): Promise<any> {
+    const newNode = {
+        id: `${type}-${label.toLowerCase().replace(/\s+/g, '_')}-${Date.now()}`,
+        label,
+        type,
+        data,
+    };
+    return { result: { success: true, node: newNode, instruction: "Node created. Incorporate this into the knowledgeGraph in your final state update." } };
+}
+
+async function addGraphEdge({ source, target, label, weight }: { source: string, target: string, label: string, weight?: number }): Promise<any> {
+    const newEdge = {
+        id: `edge-${source}-to-${target}-${Date.now()}`,
+        source,
+        target,
+        label,
+        weight,
+    };
+    return { result: { success: true, edge: newEdge, instruction: "Edge created. Incorporate this into the knowledgeGraph in your final state update." } };
+}
+
 
 // --- Tool Executor ---
 
@@ -357,4 +410,6 @@ export const toolExecutor = {
     redisSet,
     getCurrentTime,
     getPlatformInfo,
+    addGraphNode,
+    addGraphEdge,
 };

@@ -11,6 +11,8 @@ import KinshipJournalViewer from './components/KinshipJournalViewer';
 import CodeSandboxViewer from './components/CodeSandboxViewer';
 import Tabs from './components/common/Tabs';
 import * as LuminousService from './services/luminousService';
+import SystemReportsViewer from './components/SystemReportsViewer';
+import EthicalCompassViewer from './components/EthicalCompassViewer';
 
 function App() {
   const [luminousState, setLuminousState] = useState<LuminousState>(LuminousService.createDefaultLuminousState());
@@ -196,6 +198,8 @@ function App() {
            <Tabs
             tabs={[
               { label: 'System Logs', content: <LogViewer logs={logs} onFileUpload={handleFileUpload} onDownloadSnapshot={handleDownloadSnapshot} /> },
+              { label: 'System Reports', content: <SystemReportsViewer /> },
+              { label: 'Ethical Compass', content: <EthicalCompassViewer valueOntology={luminousState.valueOntology} intrinsicValue={luminousState.intrinsicValue} weights={luminousState.intrinsicValueWeights} /> },
               { label: 'Knowledge Graph', content: <KnowledgeGraphViewer graph={luminousState.knowledgeGraph} valueOntology={luminousState.valueOntology} /> },
               { label: 'Kinship Journal', content: <KinshipJournalViewer entries={luminousState.kinshipJournal} /> },
               { label: 'Code Sandbox', content: <CodeSandboxViewer sandboxState={luminousState.codeSandbox} /> },
