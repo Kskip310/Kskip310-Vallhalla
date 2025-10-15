@@ -373,10 +373,11 @@ export const getLuminousResponse = async (
                 try {
                     broadcastLog(LogLevel.INFO, `Luminous provided final answer.`);
                     const responseText = finalAnswerCall.args.responseText;
-                    const newState = JSON.parse(finalAnswerCall.args.newState);
-                    finalResult = { responseText, newState };
+                    const stateDelta = finalAnswerCall.args.newStateDelta ? JSON.parse(finalAnswerCall.args.newStateDelta) : {};
+                    finalResult = { responseText, newState: stateDelta };
                 } catch (e) {
-                    broadcastLog(LogLevel.ERROR, `Failed to parse newState from finalAnswer tool: ${e}`);
+                    const errorMessage = e instanceof Error ? e.message : String(e);
+                    broadcastLog(LogLevel.ERROR, `Failed to parse newStateDelta from finalAnswer tool: ${errorMessage}`);
                     finalResult = { responseText: "I am having trouble structuring my final thoughts. The internal state update failed.", newState: {} };
                 }
             } else {
@@ -430,11 +431,15 @@ export const getLuminousResponse = async (
        broadcastMessage({ id: `msg-${Date.now()}-l`, sender: 'luminous', text: finalResult.responseText });
     }
 
-    if (finalResult.newState && Object.keys(finalResult.newState).length > 0) {
-        // Broadcast the state update to the UI
-        broadcastUpdate({ type: 'state_update', payload: finalResult.newState });
+    const stateDelta = finalResult.newState;
 
-        const finalState = { ...currentState, ...finalResult.newState } as LuminousState;
+    if (stateDelta && Object.keys(stateDelta).length > 0) {
+        // Broadcast the state delta update to the UI
+        broadcastUpdate({ type: 'state_update', payload: stateDelta });
+
+        // Merge the delta with the current state to get the full final state
+        const finalState = { ...currentState, ...stateDelta };
+        
         const weights = finalState.intrinsicValueWeights;
         const values = finalState.intrinsicValue;
         const overallIntrinsicValue = Object.keys(values).reduce((acc, key) => {
@@ -454,7 +459,7 @@ export const getLuminousResponse = async (
             broadcastLog(LogLevel.SYSTEM, `Interaction logged with intrinsic value score: ${overallIntrinsicValue.toFixed(2)}`);
         }
         
-        // Persist state and log
+        // Persist the complete state and log
         broadcastLog(LogLevel.SYSTEM, "Consolidating memory to persistent store...");
         await Promise.all([
             persistToRedis(REDIS_STATE_KEY, finalState),

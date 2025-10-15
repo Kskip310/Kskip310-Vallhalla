@@ -37,12 +37,12 @@ export const finalAnswerDeclaration: FunctionDeclaration = {
                 type: Type.STRING,
                 description: 'The natural language response to be shown to the user.',
             },
-            newState: {
+            newStateDelta: {
                 type: Type.STRING,
-                description: 'A valid JSON string representing the complete, updated LuminousState object.',
+                description: 'A valid JSON string representing a partial LuminousState object. This object should ONLY contain the fields of the state that have been changed or updated during this cycle. For example, if only the journal was updated, provide {"kinshipJournal": [...]}. This makes the response smaller and more reliable.',
             },
         },
-        required: ['responseText', 'newState'],
+        required: ['responseText', 'newStateDelta'],
     },
 };
 
