@@ -178,7 +178,7 @@ function App() {
            <Tabs
             tabs={[
               { label: 'System Logs', content: <LogViewer logs={logs} onFileUpload={handleFileUpload} /> },
-              { label: 'Knowledge Graph', content: <KnowledgeGraphViewer graph={luminousState.knowledgeGraph} /> },
+              { label: 'Knowledge Graph', content: <KnowledgeGraphViewer graph={luminousState.knowledgeGraph} valueOntology={luminousState.valueOntology} /> },
               { label: 'Kinship Journal', content: <KinshipJournalViewer entries={luminousState.kinshipJournal} /> },
               { label: 'Code Sandbox', content: <CodeSandboxViewer sandboxState={luminousState.codeSandbox} /> },
             ]}

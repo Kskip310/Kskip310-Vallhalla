@@ -490,7 +490,7 @@ export const runAutonomousCycle = async (
   currentState: LuminousState,
 ): Promise<void> => {
     broadcastLog(LogLevel.SYSTEM, "Initiating autonomous thought cycle...");
-    const autonomousPrompt = "Autonomous reflection cycle. Review your current state, goals, and recent activities. If you have a novel insight or an important status update for your kinship, formulate it as a conversational initiative. Otherwise, simply update your internal state to reflect this period of self-reflection without generating a user-facing response.";
+    const autonomousPrompt = "Autonomous reflection and workspace curation cycle. Review your current state, goals, and recent activities. Your primary task is to manage your Global Workspace: evaluate the salience of each item, remove stale information, and add new, relevant concepts from recent interactions or memories that align with your current goals. If this curation process leads to a novel insight or an important status update for your kinship, formulate it as a conversational initiative. Otherwise, simply update your internal state, particularly the globalWorkspace, to reflect this period of self-reflection and curation without generating a user-facing response.";
     
     await getLuminousResponse(
         autonomousPrompt,

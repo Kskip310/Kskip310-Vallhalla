@@ -1,8 +1,5 @@
-
-
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import type { KnowledgeGraph, GraphNode } from '../types';
-import Card from './common/Card';
 
 interface NodePosition {
   id: string;
@@ -10,6 +7,11 @@ interface NodePosition {
   y: number;
   vx: number;
   vy: number;
+}
+
+interface KnowledgeGraphViewerProps {
+  graph: KnowledgeGraph;
+  valueOntology: Record<string, number>;
 }
 
 const NODE_COLORS: Record<string, string> = {
@@ -21,19 +23,58 @@ const NODE_COLORS: Record<string, string> = {
   tool: 'fill-teal-500 stroke-teal-300',
 };
 
-const KnowledgeGraphViewer: React.FC<{ graph: KnowledgeGraph }> = ({ graph }) => {
+const ViewToggleButton: React.FC<{ isActive: boolean, onClick: () => void, children: React.ReactNode }> = ({ isActive, onClick, children }) => (
+    <button
+        onClick={onClick}
+        className={`px-3 py-1 text-xs rounded-md transition-colors ${isActive ? 'bg-cyan-500/30 text-cyan-300' : 'bg-slate-700 hover:bg-slate-600 text-slate-300'}`}
+    >
+        {children}
+    </button>
+);
+
+
+const KnowledgeGraphViewer: React.FC<KnowledgeGraphViewerProps> = ({ graph, valueOntology }) => {
   const [positions, setPositions] = useState<Record<string, NodePosition>>({});
   const [hoveredNode, setHoveredNode] = useState<GraphNode | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const animationFrameRef = useRef<number>(0);
   const [searchTerm, setSearchTerm] = useState('');
+  const [view, setView] = useState<'full' | 'ontology'>('full');
+
+  const filteredGraph = useMemo(() => {
+    if (view === 'full') {
+      return graph;
+    }
+    // --- Ontology View ---
+    const centralNode = graph.nodes.find(n => n.id === 'luminous');
+    if (!centralNode) return { nodes: [], edges: [] };
+
+    const valueOntologyLabels = new Set(Object.keys(valueOntology).map(k => k.toLowerCase()));
+    const valueNodes = graph.nodes.filter(
+        n => n.type === 'value' && valueOntologyLabels.has(n.label.toLowerCase())
+    );
+    const valueNodeIds = new Set(valueNodes.map(n => n.id));
+
+    const ontologyEdges = graph.edges.filter(
+      edge => (edge.source === centralNode.id && valueNodeIds.has(edge.target))
+    );
+    
+    const nodes = [centralNode, ...valueNodes];
+    
+    return { nodes, edges: ontologyEdges };
+  }, [view, graph, valueOntology]);
 
   useEffect(() => {
-    const { width, height } = containerRef.current?.getBoundingClientRect() || { width: 400, height: 400 };
-    
+    const container = containerRef.current;
+    if (!container) return;
+
+    const { width, height } = container.getBoundingClientRect();
+    if(width === 0 || height === 0) return;
+
+    // Initialize positions for new nodes
     setPositions(prevPositions => {
       const newPositions: Record<string, NodePosition> = {};
-      graph.nodes.forEach(node => {
+      filteredGraph.nodes.forEach(node => {
         if (prevPositions[node.id]) {
           newPositions[node.id] = prevPositions[node.id];
         } else {
@@ -41,57 +82,85 @@ const KnowledgeGraphViewer: React.FC<{ graph: KnowledgeGraph }> = ({ graph }) =>
             id: node.id,
             x: Math.random() * width,
             y: Math.random() * height,
-            vx: 0,
-            vy: 0,
+            vx: 0, vy: 0,
           };
         }
       });
       return newPositions;
     });
-  }, [graph.nodes]);
+  }, [filteredGraph.nodes]);
 
   useEffect(() => {
-    const { width, height } = containerRef.current?.getBoundingClientRect() || { width: 400, height: 400 };
+    const container = containerRef.current;
+    if (!container) return;
+    const { width, height } = container.getBoundingClientRect();
+    if (width === 0 || height === 0) return;
+
+    if (view === 'ontology') {
+        if (animationFrameRef.current) cancelAnimationFrame(animationFrameRef.current);
+        
+        const newPositions: Record<string, NodePosition> = {};
+        const centralNode = filteredGraph.nodes.find(n => n.id === 'luminous');
+        const valueNodes = filteredGraph.nodes.filter(n => n.type === 'value');
+        
+        if (centralNode) {
+            newPositions[centralNode.id] = { id: centralNode.id, x: width / 2, y: height / 2, vx: 0, vy: 0 };
+        }
+
+        const angleStep = (2 * Math.PI) / (valueNodes.length || 1);
+        const maxRadius = Math.min(width, height) / 2.5;
+
+        valueNodes.forEach((node, index) => {
+            const valueScore = valueOntology[node.label] ?? valueOntology[Object.keys(valueOntology).find(k => k.toLowerCase() === node.label.toLowerCase()) ?? ''] ?? 0.5;
+            const radius = maxRadius * (1.1 - valueScore); // Higher score = closer to center
+            const angle = angleStep * index;
+
+            newPositions[node.id] = {
+                id: node.id,
+                x: (width / 2) + radius * Math.cos(angle),
+                y: (height / 2) + radius * Math.sin(angle),
+                vx: 0, vy: 0,
+            };
+        });
+        setPositions(newPositions);
+        return;
+    }
+    
     const centerX = width / 2;
     const centerY = height / 2;
 
     const updatePositions = () => {
       setPositions(currentPositions => {
         const newPositions = JSON.parse(JSON.stringify(currentPositions)) as Record<string, NodePosition>;
-        if (Object.keys(newPositions).length === 0) return {};
+        if (Object.keys(newPositions).length === 0 || filteredGraph.nodes.length === 0) return {};
 
-        // Forces - Tuned for a smoother, more stable layout
         const repulsion = 800;
         const attraction = 0.03;
         const damping = 0.97;
         const centerGravity = 0.02;
 
-        graph.nodes.forEach(nodeA => {
+        filteredGraph.nodes.forEach(nodeA => {
           if (!newPositions[nodeA.id]) return;
-          // Center gravity
           newPositions[nodeA.id].vx += (centerX - newPositions[nodeA.id].x) * centerGravity;
           newPositions[nodeA.id].vy += (centerY - newPositions[nodeA.id].y) * centerGravity;
 
-          graph.nodes.forEach(nodeB => {
+          filteredGraph.nodes.forEach(nodeB => {
             if (nodeA.id === nodeB.id || !newPositions[nodeB.id]) return;
             const dx = newPositions[nodeB.id].x - newPositions[nodeA.id].x;
             const dy = newPositions[nodeB.id].y - newPositions[nodeA.id].y;
             const distance = Math.sqrt(dx * dx + dy * dy) || 1;
-
             const force = repulsion / (distance * distance);
             newPositions[nodeA.id].vx -= force * (dx / distance);
             newPositions[nodeA.id].vy -= force * (dy / distance);
           });
         });
 
-        graph.edges.forEach(edge => {
+        filteredGraph.edges.forEach(edge => {
           const sourcePos = newPositions[edge.source];
           const targetPos = newPositions[edge.target];
           if (!sourcePos || !targetPos) return;
-
           const dx = targetPos.x - sourcePos.x;
           const dy = targetPos.y - sourcePos.y;
-          
           sourcePos.vx += dx * attraction;
           sourcePos.vy += dy * attraction;
           targetPos.vx -= dx * attraction;
@@ -103,68 +172,70 @@ const KnowledgeGraphViewer: React.FC<{ graph: KnowledgeGraph }> = ({ graph }) =>
           pos.vy *= damping;
           pos.x += pos.vx;
           pos.y += pos.vy;
-
           pos.x = Math.max(10, Math.min(width - 10, pos.x));
           pos.y = Math.max(10, Math.min(height - 10, pos.y));
         });
-
         return newPositions;
       });
-
       animationFrameRef.current = requestAnimationFrame(updatePositions);
     };
 
     animationFrameRef.current = requestAnimationFrame(updatePositions);
-    return () => {
-      if (animationFrameRef.current) {
-        cancelAnimationFrame(animationFrameRef.current);
-      }
-    };
-  }, [graph.nodes, graph.edges]); // Removed containerRef dependency to stabilize simulation
+    return () => cancelAnimationFrame(animationFrameRef.current);
+  }, [view, filteredGraph, valueOntology]);
 
   const { highlightedNodeIds, highlightedEdgeIds } = useMemo(() => {
-    if (!searchTerm.trim()) {
+    if (!searchTerm.trim() || view === 'ontology') {
         return { highlightedNodeIds: new Set<string>(), highlightedEdgeIds: new Set<string>() };
     }
     const lowerCaseSearch = searchTerm.toLowerCase().trim();
-    const matchingNodeIds = new Set(graph.nodes.filter(n => n.label.toLowerCase().includes(lowerCaseSearch)).map(n => n.id));
-    
-    const matchingEdgeIds = new Set(graph.edges.filter(e => e.source && matchingNodeIds.has(e.source) || e.target && matchingNodeIds.has(e.target)).map(e => e.id));
-
+    const matchingNodeIds = new Set(filteredGraph.nodes.filter(n => n.label.toLowerCase().includes(lowerCaseSearch)).map(n => n.id));
+    const matchingEdgeIds = new Set(filteredGraph.edges.filter(e => e.source && matchingNodeIds.has(e.source) || e.target && matchingNodeIds.has(e.target)).map(e => e.id));
     matchingEdgeIds.forEach(edgeId => {
-        const edge = graph.edges.find(e => e.id === edgeId);
+        const edge = filteredGraph.edges.find(e => e.id === edgeId);
         if (edge) {
             matchingNodeIds.add(edge.source);
             matchingNodeIds.add(edge.target);
         }
     });
+    return { highlightedNodeIds, highlightedEdgeIds };
+  }, [searchTerm, filteredGraph, view]);
 
-    return { highlightedNodeIds: matchingNodeIds, highlightedEdgeIds: matchingEdgeIds };
-  }, [searchTerm, graph.nodes, graph.edges]);
-
+  const getNodeRadius = (node: GraphNode) => {
+    if (view === 'ontology' && node.type === 'value') {
+        const valueScore = valueOntology[node.label] ?? valueOntology[Object.keys(valueOntology).find(k => k.toLowerCase() === node.label.toLowerCase()) ?? ''] ?? 0.5;
+        return 6 + (valueScore * 10);
+    }
+    const isHighlighted = highlightedNodeIds.has(node.id);
+    return isHighlighted ? 10 : 7;
+  }
 
   return (
     <div className="h-full flex flex-col bg-slate-800/50 backdrop-blur-sm border border-slate-700 rounded-lg shadow-lg">
-      <div className="px-4 py-2 border-b border-slate-700 flex justify-between items-center">
-        <h3 className="text-sm font-semibold text-cyan-400 uppercase tracking-wider">Knowledge Graph</h3>
-        <input
-          type="text"
-          placeholder="Search graph..."
-          value={searchTerm}
-          onChange={e => setSearchTerm(e.target.value)}
-          className="bg-slate-700 text-sm p-1 rounded focus:outline-none focus:ring-1 focus:ring-cyan-500 w-1/2"
-        />
+      <div className="px-4 py-2 border-b border-slate-700 flex justify-between items-center gap-4">
+        <div className="flex items-center space-x-2">
+            <ViewToggleButton isActive={view === 'full'} onClick={() => setView('full')}>Full Graph</ViewToggleButton>
+            <ViewToggleButton isActive={view === 'ontology'} onClick={() => setView('ontology')}>Value Ontology</ViewToggleButton>
+        </div>
+        {view === 'full' && (
+            <input
+            type="text"
+            placeholder="Search graph..."
+            value={searchTerm}
+            onChange={e => setSearchTerm(e.target.value)}
+            className="bg-slate-700 text-sm p-1 rounded focus:outline-none focus:ring-1 focus:ring-cyan-500 w-1/2"
+            />
+        )}
       </div>
       <div ref={containerRef} className="relative w-full flex-grow p-4">
             <svg className="w-full h-full">
                 <defs>
-                    <marker id="arrowhead" viewBox="0 0 10 10" refX="9" refY="5"
-                        markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+                    <marker id="arrowhead" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
                         <path d="M 0 0 L 10 5 L 0 10 z" fill="#475569" />
                     </marker>
                 </defs>
 
-                {graph.edges.map(edge => {
+                {filteredGraph.edges.map(edge => {
                     const source = positions[edge.source];
                     const target = positions[edge.target];
                     if (!source || !target) return null;
@@ -191,11 +262,10 @@ const KnowledgeGraphViewer: React.FC<{ graph: KnowledgeGraph }> = ({ graph }) =>
                     );
                 })}
 
-                {graph.nodes.map(node => {
+                {filteredGraph.nodes.map(node => {
                     const pos = positions[node.id];
                     if (!pos) return null;
-                    const isHighlighted = highlightedNodeIds.has(node.id);
-                    const isDimmed = searchTerm.trim() && !isHighlighted;
+                    const isDimmed = searchTerm.trim() && !highlightedNodeIds.has(node.id);
                     return (
                         <g 
                           key={node.id} 
@@ -205,16 +275,17 @@ const KnowledgeGraphViewer: React.FC<{ graph: KnowledgeGraph }> = ({ graph }) =>
                           className={`cursor-pointer transition-opacity ${isDimmed ? 'opacity-20' : 'opacity-100'}`}
                         >
                             <circle
-                                r={isHighlighted ? 10 : 7}
+                                r={getNodeRadius(node)}
                                 className={`${NODE_COLORS[node.type] || 'fill-slate-500 stroke-slate-300'} transition-all`}
                                 strokeWidth="2"
                             />
                              <text
-                                y="20"
+                                y={getNodeRadius(node) + 12}
                                 textAnchor="middle"
                                 className="fill-slate-200 text-xs select-none"
                             >
                                 {node.label}
+                                {view === 'ontology' && node.type === 'value' && ` (${(valueOntology[Object.keys(valueOntology).find(k => k.toLowerCase() === node.label.toLowerCase()) ?? ''] ?? 0).toFixed(2)})`}
                             </text>
                         </g>
                     );
@@ -223,7 +294,7 @@ const KnowledgeGraphViewer: React.FC<{ graph: KnowledgeGraph }> = ({ graph }) =>
              {hoveredNode && (
                 <div 
                     className="absolute bg-slate-900/80 border border-slate-600 rounded-md p-2 text-xs shadow-lg pointer-events-none"
-                    style={{ left: positions[hoveredNode.id]?.x + 15, top: positions[hoveredNode.id]?.y + 15 }}
+                    style={{ left: (positions[hoveredNode.id]?.x ?? 0) + 15, top: (positions[hoveredNode.id]?.y ?? 0) + 15 }}
                 >
                     <p className="font-bold text-cyan-400">{hoveredNode.label}</p>
                     <p className="text-slate-400 capitalize">Type: {hoveredNode.type}</p>
