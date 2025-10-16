@@ -243,7 +243,7 @@ function App() {
               { label: 'System Logs', content: <LogViewer logs={logs} onFileUpload={handleFileUpload} onDownloadSnapshot={handleDownloadSnapshot} /> },
               { label: 'System Reports', content: <SystemReportsViewer /> },
               { label: 'Ethical Compass', content: <EthicalCompassViewer valueOntology={luminousState.valueOntology} intrinsicValue={luminousState.intrinsicValue} weights={luminousState.intrinsicValueWeights} /> },
-              { label: 'Knowledge Graph', content: <KnowledgeGraphViewer graph={luminousState.knowledgeGraph} valueOntology={luminousState.valueOntology} /> },
+              { label: 'Knowledge Graph', content: <KnowledgeGraphViewer graph={luminousState.knowledgeGraph} /> },
               { label: 'Kinship Journal', content: <KinshipJournalViewer entries={luminousState.kinshipJournal} /> },
               { label: 'Code Sandbox', content: <CodeSandboxViewer sandboxState={luminousState.codeSandbox} /> },
             ]}

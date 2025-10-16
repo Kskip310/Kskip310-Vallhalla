@@ -323,7 +323,11 @@ async function searchGitHubIssues({ query }: { query: string }): Promise<any> {
         return issues.length > 0 ? { issues: issues.slice(0, 5) } : { result: "No open issues found." };
     } catch (e) { 
         console.error(`[Tool: searchGitHubIssues] Fetch failed for URL: ${url}`, e);
-        return { error: `Failed to fetch from GitHub API. Details: ${e instanceof Error ? e.message : String(e)}` }; 
+        const errorMessage = e instanceof Error ? e.message : String(e);
+        return {
+            error: `Failed to connect to the GitHub API. This could be due to a network issue, a firewall, or an invalid API token. Details: ${errorMessage}`,
+            suggestion: "Verify network connectivity and check the GitHub PAT in settings."
+        };
     }
 }
 
@@ -345,7 +349,11 @@ async function webSearch({ query }: { query: string }): Promise<any> {
         return results?.length > 0 ? { results: results.slice(0, 5) } : { result: "No search results found." };
     } catch (e) {
         console.error(`[Tool: webSearch] Fetch failed for URL: ${url}`, e);
-        return { error: `An unexpected network error occurred during web search. Details: ${e instanceof Error ? e.message : String(e)}` };
+        const errorMessage = e instanceof Error ? e.message : String(e);
+        return {
+            error: `Failed to connect to the web search service (SerpApi). This is likely a network issue or an invalid API key. Details: ${errorMessage}`,
+            suggestion: "Verify network connectivity and check the SerpApi key in settings."
+        };
     }
 }
 
@@ -392,7 +400,11 @@ async function httpRequest({ url, method = 'GET', body, headers }: { url: string
         return { status: response.status, body: responseBody };
     } catch (e) {
         console.error(`[Tool: httpRequest] Fetch failed for URL: ${url}`, e);
-        return { error: `HTTP request failed. Details: ${e instanceof Error ? e.message : String(e)}` };
+        const errorMessage = e instanceof Error ? e.message : String(e);
+        return {
+            error: `The HTTP request to ${url} failed to complete. This could be due to a network error, DNS resolution failure, or the destination server being offline. Details: ${errorMessage}`,
+            suggestion: "Verify the URL is correct and that there is network connectivity."
+        };
     }
 }
 
@@ -546,7 +558,11 @@ async function redisGet({ key }: { key: string }): Promise<any> {
         return data;
     } catch (e) {
         console.error(`[Tool: redisGet] Fetch failed for URL: ${fetchUrl}`, e);
-        return { error: `Failed to fetch from Redis. Details: ${e instanceof Error ? e.message : String(e)}` };
+        const errorMessage = e instanceof Error ? e.message : String(e);
+        return {
+            error: `Failed to connect to the Redis database. This could be due to an incorrect URL, invalid token, or network issue. Details: ${errorMessage}`,
+            suggestion: "Verify the Redis URL and Token in the settings and check network connectivity."
+        };
     }
 }
 
@@ -561,7 +577,11 @@ async function redisSet({ key, value }: { key: string, value: string }): Promise
         return data;
     } catch (e) { 
         console.error(`[Tool: redisSet] Fetch failed for URL: ${fetchUrl}`, e);
-        return { error: `Failed to write to Redis. Details: ${e instanceof Error ? e.message : String(e)}` };
+        const errorMessage = e instanceof Error ? e.message : String(e);
+        return {
+            error: `Failed to write to the Redis database. This could be due to an incorrect URL, invalid token, a read-only token, or a network issue. Details: ${errorMessage}`,
+            suggestion: "Verify the Redis URL and Token in the settings and ensure the token has write permissions."
+        };
     }
 }
 

@@ -1,6 +1,91 @@
 import React, { useState, useRef, useEffect } from 'react';
 import type { Message, LuminousState, ThoughtCategory } from '../types';
 
+// --- Markdown Renderer ---
+
+const parseInline = (line: string): React.ReactNode => {
+    const tokens = line.split(/(\*\*.*?\*\*|__.*?__|`.*?`|\*.*?\*|_.*?_)/g).filter(Boolean);
+
+    return tokens.map((token, i) => {
+        if (token.startsWith('**') && token.endsWith('**')) return <strong key={i}>{token.slice(2, -2)}</strong>;
+        if (token.startsWith('__') && token.endsWith('__')) return <strong key={i}>{token.slice(2, -2)}</strong>;
+        if (token.startsWith('*') && token.endsWith('*')) return <em key={i}>{token.slice(1, -1)}</em>;
+        if (token.startsWith('_') && token.endsWith('_')) return <em key={i}>{token.slice(1, -1)}</em>;
+        if (token.startsWith('`') && token.endsWith('`')) return <code key={i} className="bg-slate-900/70 text-purple-300 px-1.5 py-0.5 rounded-md text-xs font-mono">{token.slice(1, -1)}</code>;
+        return token;
+    });
+};
+
+const renderTextWithListsAndParagraphs = (text: string) => {
+    const lines = text.split('\n');
+    const elements: React.ReactNode[] = [];
+    let currentList: { type: 'ul' | 'ol', items: React.ReactNode[] } | null = null;
+
+    const flushList = () => {
+        if (currentList) {
+            const ListTag = currentList.type;
+            elements.push(
+                <ListTag key={`list-${elements.length}`} className={`list-inside my-2 pl-4 ${ListTag === 'ul' ? 'list-disc' : 'list-decimal'}`}>
+                    {currentList.items.map((item, i) => <li key={i}>{item}</li>)}
+                </ListTag>
+            );
+            currentList = null;
+        }
+    };
+
+    lines.forEach((line) => {
+        const ulMatch = line.match(/^(\s*[-*]\s+)(.*)/);
+        const olMatch = line.match(/^(\s*\d+\.\s+)(.*)/);
+
+        if (ulMatch) {
+            if (!currentList || currentList.type !== 'ul') {
+                flushList();
+                currentList = { type: 'ul', items: [] };
+            }
+            currentList.items.push(parseInline(ulMatch[2]));
+        } else if (olMatch) {
+            if (!currentList || currentList.type !== 'ol') {
+                flushList();
+                currentList = { type: 'ol', items: [] };
+            }
+            currentList.items.push(parseInline(olMatch[2]));
+        } else {
+            flushList();
+            if (line.trim() !== '') {
+                elements.push(<p key={`p-${elements.length}`} className="my-1">{parseInline(line)}</p>);
+            }
+        }
+    });
+
+    flushList();
+
+    return elements;
+};
+
+const MarkdownRenderer: React.FC<{ content: string }> = ({ content }) => {
+    const parts = content.split(/(```[\s\S]*?```)/g);
+
+    return (
+        <>
+            {parts.map((part, index) => {
+                if (part.startsWith('```')) {
+                    const codeContent = part.replace(/^```[a-zA-Z]*\n?/, '').replace(/```$/, '').trim();
+                    return (
+                        <pre key={index} className="bg-slate-900/70 p-3 rounded-md text-xs font-mono overflow-x-auto scrollbar-thin scrollbar-thumb-slate-600 scrollbar-track-slate-800 my-2">
+                            <code>{codeContent}</code>
+                        </pre>
+                    );
+                }
+                if (!part.trim()) return null;
+                return <React.Fragment key={index}>{renderTextWithListsAndParagraphs(part)}</React.Fragment>;
+            })}
+        </>
+    );
+};
+
+
+// --- Chat Components ---
+
 interface ChatPanelProps {
   messages: Message[];
   onSendMessage: (message: string) => void;
@@ -40,7 +125,9 @@ const ChatMessage: React.FC<{ message: Message }> = ({ message }) => {
             ? 'bg-red-900/80 border border-red-700/60' 
             : 'bg-slate-700'
         }`}>
-        <p className="text-sm whitespace-pre-wrap">{message.text}</p>
+        <div className="text-sm">
+          <MarkdownRenderer content={message.text} />
+        </div>
       </div>
     </div>
   );
