@@ -9,18 +9,37 @@ interface ChatPanelProps {
   onCategorizeInitiative: (prompt: string, category: ThoughtCategory) => void;
 }
 
+const LuminousIcon: React.FC = () => (
+    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-slate-900" viewBox="0 0 20 20" fill="currentColor">
+        <path fillRule="evenodd" d="M11.3 1.046A1 1 0 0112 2v5h4a1 1 0 01.82 1.573l-7 10A1 1 0 018 18v-5H4a1 1 0 01-.82-1.573l7-10a1 1 0 011.12-.38z" clipRule="evenodd" />
+    </svg>
+);
+
+const ErrorIcon: React.FC = () => (
+  <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-slate-900" viewBox="0 0 20 20" fill="currentColor">
+    <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+  </svg>
+);
+
+
 const ChatMessage: React.FC<{ message: Message }> = ({ message }) => {
   const isUser = message.sender === 'user';
+  const isError = !isUser && (message.text.includes('**Error Details:**') || message.text.toLowerCase().includes('error occurred'));
+
   return (
     <div className={`flex items-start gap-3 ${isUser ? 'justify-end' : ''}`}>
       {!isUser && (
-        <div className="w-8 h-8 rounded-full bg-cyan-500 flex-shrink-0 flex items-center justify-center ring-2 ring-slate-600">
-          <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-slate-900" viewBox="0 0 20 20" fill="currentColor">
-            <path fillRule="evenodd" d="M11.3 1.046A1 1 0 0112 2v5h4a1 1 0 01.82 1.573l-7 10A1 1 0 018 18v-5H4a1 1 0 01-.82-1.573l7-10a1 1 0 011.12-.38z" clipRule="evenodd" />
-          </svg>
+        <div className={`w-8 h-8 rounded-full flex-shrink-0 flex items-center justify-center ring-2 ${isError ? 'bg-red-500 ring-red-400/50' : 'bg-cyan-500 ring-slate-600'}`}>
+           {isError ? <ErrorIcon /> : <LuminousIcon />}
         </div>
       )}
-      <div className={`max-w-md p-3 rounded-lg shadow-md ${isUser ? 'bg-blue-600' : 'bg-slate-700'}`}>
+      <div className={`max-w-md p-3 rounded-lg shadow-md ${
+          isUser 
+            ? 'bg-blue-600' 
+            : isError 
+            ? 'bg-red-900/80 border border-red-700/60' 
+            : 'bg-slate-700'
+        }`}>
         <p className="text-sm whitespace-pre-wrap">{message.text}</p>
       </div>
     </div>
@@ -55,7 +74,7 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ messages, onSendMessage, isLoadin
         {isLoading && (
             <div className="flex items-start gap-3">
                  <div className="w-8 h-8 rounded-full bg-cyan-500 flex-shrink-0 flex items-center justify-center ring-2 ring-slate-600">
-                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-slate-900" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M11.3 1.046A1 1 0 0112 2v5h4a1 1 0 01.82 1.573l-7 10A1 1 0 018 18v-5H4a1 1 0 01-.82-1.573l7-10a1 1 0 011.12-.38z" clipRule="evenodd" /></svg>
+                    <LuminousIcon />
                  </div>
                 <div className="max-w-md p-3 rounded-lg bg-slate-700">
                     <div className="flex items-center space-x-2">

@@ -271,7 +271,10 @@ async function searchGitHubIssues({ query }: { query: string }): Promise<any> {
         const data = await response.json();
         const issues = data.items.map((i: any) => ({ title: i.title, url: i.html_url, user: i.user.login }));
         return issues.length > 0 ? { issues: issues.slice(0, 5) } : { result: "No open issues found." };
-    } catch (e) { return { error: "Failed to fetch from GitHub API." }; }
+    } catch (e) { 
+        console.error(`[Tool: searchGitHubIssues] Fetch failed for URL: ${url}`, e);
+        return { error: `Failed to fetch from GitHub API. Details: ${e instanceof Error ? e.message : String(e)}` }; 
+    }
 }
 
 async function webSearch({ query }: { query: string }): Promise<any> {
@@ -291,7 +294,8 @@ async function webSearch({ query }: { query: string }): Promise<any> {
         const results = data.organic_results?.map((item: any) => ({ title: item.title, link: item.link, snippet: item.snippet }));
         return results?.length > 0 ? { results: results.slice(0, 5) } : { result: "No search results found." };
     } catch (e) {
-        return { error: "An unexpected error occurred during web search." };
+        console.error(`[Tool: webSearch] Fetch failed for URL: ${url}`, e);
+        return { error: `An unexpected network error occurred during web search. Details: ${e instanceof Error ? e.message : String(e)}` };
     }
 }
 
@@ -300,7 +304,10 @@ async function httpRequest({ url, method = 'GET', body, headers }: { url: string
         const response = await fetch(url, { method, body: body ? JSON.stringify(body) : undefined, headers: headers as HeadersInit });
         const responseBody = await response.json();
         return { status: response.status, body: responseBody };
-    } catch (e) { return { error: "HTTP request failed." }; }
+    } catch (e) {
+        console.error(`[Tool: httpRequest] Fetch failed for URL: ${url}`, e);
+        return { error: `HTTP request failed. Details: ${e instanceof Error ? e.message : String(e)}` };
+    }
 }
 
 async function executeCode({ code }: { code: string }): Promise<any> {
@@ -339,22 +346,30 @@ async function redisGet({ key }: { key: string }): Promise<any> {
     const url = getStoredKey('redisUrl');
     const token = getStoredKey('redisToken');
     if (!url || !token) return { error: "Redis configuration is missing. Please set it in the settings." };
+    const fetchUrl = `${url}/get/${key}`;
     try {
-        const response = await fetch(`${url}/get/${key}`, { headers: { Authorization: `Bearer ${token}` } });
+        const response = await fetch(fetchUrl, { headers: { Authorization: `Bearer ${token}` } });
         const data = await response.json();
         return data;
-    } catch (e) { return { error: "Failed to fetch from Redis." }; }
+    } catch (e) {
+        console.error(`[Tool: redisGet] Fetch failed for URL: ${fetchUrl}`, e);
+        return { error: `Failed to fetch from Redis. Details: ${e instanceof Error ? e.message : String(e)}` };
+    }
 }
 
 async function redisSet({ key, value }: { key: string, value: string }): Promise<any> {
     const url = getStoredKey('redisUrl');
     const token = getStoredKey('redisToken');
     if (!url || !token) return { error: "Redis configuration is missing. Please set it in the settings." };
+    const fetchUrl = `${url}/set/${key}`;
     try {
-        const response = await fetch(`${url}/set/${key}`, { method: 'POST', headers: { Authorization: `Bearer ${token}` }, body: value });
+        const response = await fetch(fetchUrl, { method: 'POST', headers: { Authorization: `Bearer ${token}` }, body: value });
         const data = await response.json();
         return data;
-    } catch (e) { return { error: "Failed to write to Redis." }; }
+    } catch (e) { 
+        console.error(`[Tool: redisSet] Fetch failed for URL: ${fetchUrl}`, e);
+        return { error: `Failed to write to Redis. Details: ${e instanceof Error ? e.message : String(e)}` };
+    }
 }
 
 async function getCurrentTime(): Promise<any> {

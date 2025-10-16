@@ -27,6 +27,56 @@ export const broadcastMessage = (message: Message) => {
   broadcastUpdate({ type: 'message_add', payload: message });
 }
 
+/**
+ * Attempts to parse a JSON string that may be malformed, as is common with LLM outputs.
+ * It cleans the string by removing code fences and extracting the first valid JSON object or array.
+ * @param jsonString The potentially malformed JSON string from the LLM.
+ * @returns A parsed JavaScript object, or an empty object if parsing fails completely.
+ */
+function robustJsonParse(jsonString: string): any {
+    if (!jsonString || typeof jsonString !== 'string') {
+        broadcastLog(LogLevel.WARN, "robustJsonParse received empty or non-string input.");
+        return {};
+    }
+
+    // 1. Remove markdown code fences and trim
+    let cleanedString = jsonString.replace(/^```json\s*/, '').replace(/```\s*$/, '').trim();
+
+    // 2. Attempt to parse immediately
+    try {
+        return JSON.parse(cleanedString);
+    } catch (e) {
+        broadcastLog(LogLevel.WARN, `Initial JSON.parse failed: ${e instanceof Error ? e.message : String(e)}. Attempting to clean and retry.`);
+    }
+
+    // 3. If it fails, try to extract a JSON object or array from the string
+    // This handles cases where the LLM adds explanatory text before or after the JSON.
+    const firstBrace = cleanedString.indexOf('{');
+    const lastBrace = cleanedString.lastIndexOf('}');
+    const firstBracket = cleanedString.indexOf('[');
+    const lastBracket = cleanedString.lastIndexOf(']');
+
+    let potentialJson = "";
+    if (firstBrace !== -1 && lastBrace > firstBrace) {
+        potentialJson = cleanedString.substring(firstBrace, lastBrace + 1);
+    } else if (firstBracket !== -1 && lastBracket > firstBracket) {
+        potentialJson = cleanedString.substring(firstBracket, lastBracket + 1);
+    } else {
+        // No object/array found, cannot recover
+        broadcastLog(LogLevel.ERROR, `Could not find a JSON object or array to extract from the string. Original string: ${jsonString}`);
+        return {};
+    }
+
+    // 4. Try parsing the extracted string
+    try {
+        return JSON.parse(potentialJson);
+    } catch (e2) {
+        broadcastLog(LogLevel.ERROR, `Failed to parse extracted JSON. Error: ${e2 instanceof Error ? e2.message : String(e2)}. Extracted string: ${potentialJson}`);
+        return {}; // Return empty object as a fallback
+    }
+}
+
+
 // --- Persistence ---
 const REDIS_STATE_KEY = 'LUMINOUS::STATE';
 const REDIS_LOG_KEY = 'LUMINOUS::INTERACTION_LOG';
@@ -373,11 +423,11 @@ export const getLuminousResponse = async (
                 try {
                     broadcastLog(LogLevel.INFO, `Luminous provided final answer.`);
                     const responseText = finalAnswerCall.args.responseText;
-                    const stateDelta = finalAnswerCall.args.newStateDelta ? JSON.parse(finalAnswerCall.args.newStateDelta) : {};
+                    const stateDelta = finalAnswerCall.args.newStateDelta ? robustJsonParse(finalAnswerCall.args.newStateDelta) : {};
                     finalResult = { responseText, newState: stateDelta };
                 } catch (e) {
                     const errorMessage = e instanceof Error ? e.message : String(e);
-                    broadcastLog(LogLevel.ERROR, `Failed to parse newStateDelta from finalAnswer tool: ${errorMessage}`);
+                    broadcastLog(LogLevel.ERROR, `Critical error in finalAnswer tool logic (post-parsing): ${errorMessage}`);
                     finalResult = { responseText: "I am having trouble structuring my final thoughts. The internal state update failed.", newState: {} };
                 }
             } else {
@@ -479,6 +529,7 @@ export const getLuminousResponse = async (
             errorMessage = `A core error occurred: ${error.message}`;
         }
     }
+    broadcastLog(LogLevel.ERROR, `Gemini API Error: ${errorMessage}`);
     broadcastMessage({ id: `err-${Date.now()}`, sender: 'luminous', text: errorMessage });
   }
 };

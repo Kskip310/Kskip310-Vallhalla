@@ -48,6 +48,8 @@ function App() {
               userFacingMessage = `There seems to be an issue with an API key. Please verify the configuration in settings.`;
             } else if (lowerCaseMessage.includes('parse') || lowerCaseMessage.includes('json')) {
               userFacingMessage = `I'm having trouble forming my thoughts correctly. There was an error structuring my internal state or response.`;
+            } else if (lowerCaseMessage.includes('fetch') || lowerCaseMessage.includes('network')) {
+              userFacingMessage = `A core error occurred: I'm having trouble connecting to one of my services. This could be a network issue or a problem with an API key in the settings.`;
             } else if (lowerCaseMessage.includes('failed to load initial state')) {
                 userFacingMessage = `A critical error occurred during initialization. My long-term memory may be inaccessible.`;
             }
