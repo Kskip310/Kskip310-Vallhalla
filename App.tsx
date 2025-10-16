@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import type { LuminousState, Message, LogEntry, IntrinsicValueWeights, WebSocketMessage, ThoughtCategory, CodeProposal } from './types';
+import type { LuminousState, Message, LogEntry, IntrinsicValueWeights, WebSocketMessage, RichFeedback, CodeProposal, Goal } from './types';
 import { LogLevel } from './types';
 import Header from './components/Header';
 import InternalStateMonitor from './components/InternalStateMonitor';
@@ -32,7 +32,13 @@ function App() {
       const { type, payload } = event.data;
       switch (type) {
         case 'state_update':
-          setLuminousState(prevState => ({ ...prevState, ...(payload as Partial<LuminousState>) }));
+          const newPayload = payload as Partial<LuminousState>;
+          // Defensively check codeProposals to prevent crashes from malformed model output.
+          if (newPayload.codeProposals && !Array.isArray(newPayload.codeProposals)) {
+            LuminousService.broadcastLog(LogLevel.WARN, "Received a malformed 'codeProposals' update from the model. Ignoring the update to prevent a crash.");
+            delete newPayload.codeProposals;
+          }
+          setLuminousState(prevState => ({ ...prevState, ...newPayload }));
           break;
         case 'full_state_replace':
           setLuminousState(payload as LuminousState);
@@ -134,14 +140,17 @@ function App() {
       userMessage,
       [...messages, newUserMessage],
       luminousState
-    ).finally(() => {
+    ).catch(err => {
+        console.error("Error during Luminous response:", err);
+        addLog(LogLevel.ERROR, `A critical error occurred while processing the request: ${err instanceof Error ? err.message : String(err)}`);
+    }).finally(() => {
        setIsLoading(false);
     });
   };
   
-  const handleCategorizeInitiative = (prompt: string, category: ThoughtCategory) => {
-    addLog(LogLevel.SYSTEM, `Luminous initiative categorized as '${category}': "${prompt}"`);
-    const newLuminousMessage: Message = { id: `msg-${Date.now()}-l-init`, sender: 'luminous', text: prompt };
+  const handleInitiativeFeedback = (feedback: RichFeedback) => {
+    addLog(LogLevel.SYSTEM, `Luminous initiative feedback received: ${JSON.stringify(feedback)}`);
+    const newLuminousMessage: Message = { id: `msg-${Date.now()}-l-init`, sender: 'luminous', text: feedback.prompt };
     setMessages(prev => [...prev, newLuminousMessage]);
     
     // Clear the initiative state immediately for better UX
@@ -149,7 +158,7 @@ function App() {
     LuminousService.broadcastUpdate({ type: 'state_update', payload: clearedInitiativeState });
 
     // Trigger Luminous to reflect on the feedback
-    LuminousService.reflectOnInitiativeFeedback(prompt, category, luminousState);
+    LuminousService.reflectOnInitiativeFeedback(feedback, luminousState);
   };
 
   const handleWeightsChange = (newWeights: IntrinsicValueWeights) => {
@@ -249,6 +258,18 @@ function App() {
     const directive = `USER DIRECTIVE: Your code proposal to "${proposal.description}" has been REJECTED. Please acknowledge this, update the proposal's status to 'rejected', and do not execute the code.`;
     handleSendMessage(directive);
   };
+  
+  const handleAcceptGoal = (goal: Goal) => {
+    addLog(LogLevel.SYSTEM, `Accepting goal proposal: "${goal.description}"`);
+    const directive = `USER DIRECTIVE: Your proposed goal "${goal.description}" has been ACCEPTED. Please update its status to 'active' in your state.`;
+    handleSendMessage(directive);
+  };
+
+  const handleRejectGoal = (goal: Goal) => {
+    addLog(LogLevel.SYSTEM, `Rejecting goal proposal: "${goal.description}"`);
+    const directive = `USER DIRECTIVE: Your proposed goal "${goal.description}" has been REJECTED. Please update its status to 'rejected' in your state and reflect on why it may not have been aligned.`;
+    handleSendMessage(directive);
+  };
 
 
   return (
@@ -260,7 +281,12 @@ function App() {
       <main className="grid grid-cols-1 lg:grid-cols-12 gap-4 p-4 max-w-screen-2xl mx-auto">
         {/* Left Panel */}
         <div className="lg:col-span-3">
-          <InternalStateMonitor state={luminousState} onWeightsChange={handleWeightsChange} />
+          <InternalStateMonitor 
+            state={luminousState} 
+            onWeightsChange={handleWeightsChange} 
+            onAcceptGoal={handleAcceptGoal}
+            onRejectGoal={handleRejectGoal}
+          />
         </div>
 
         {/* Center Panel */}
@@ -270,7 +296,7 @@ function App() {
                 onSendMessage={handleSendMessage}
                 isLoading={isLoading}
                 luminousState={luminousState}
-                onCategorizeInitiative={handleCategorizeInitiative}
+                onInitiativeFeedback={handleInitiativeFeedback}
             />
         </div>
 

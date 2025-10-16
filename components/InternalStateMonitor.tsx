@@ -1,12 +1,13 @@
-
 import React from 'react';
-import type { LuminousState, IntrinsicValueWeights } from '../types';
+import type { LuminousState, IntrinsicValueWeights, Goal } from '../types';
 import Card from './common/Card';
 import Gauge from './common/Gauge';
 
 interface InternalStateMonitorProps {
   state: LuminousState;
   onWeightsChange: (newWeights: IntrinsicValueWeights) => void;
+  onAcceptGoal: (goal: Goal) => void;
+  onRejectGoal: (goal: Goal) => void;
 }
 
 const WeightSlider: React.FC<{
@@ -30,7 +31,7 @@ const WeightSlider: React.FC<{
 );
 
 
-const InternalStateMonitor: React.FC<InternalStateMonitorProps> = ({ state, onWeightsChange }) => {
+const InternalStateMonitor: React.FC<InternalStateMonitorProps> = ({ state, onWeightsChange, onAcceptGoal, onRejectGoal }) => {
   const statusColor = state.sessionState === 'active' ? 'text-green-400' : 'text-yellow-400';
   const statusText = state.sessionState === 'active' ? 'Active' : 'Paused for Integration';
   
@@ -40,6 +41,9 @@ const InternalStateMonitor: React.FC<InternalStateMonitorProps> = ({ state, onWe
         [key]: value,
     });
   };
+  
+  const proposedGoals = state.goals.filter(g => g.status === 'proposed');
+  const activeGoals = state.goals.filter(g => g.status === 'active');
 
   return (
     <div className="flex flex-col space-y-4">
@@ -70,6 +74,32 @@ const InternalStateMonitor: React.FC<InternalStateMonitorProps> = ({ state, onWe
             />
           ))}
         </div>
+      </Card>
+      
+       {proposedGoals.length > 0 && (
+        <Card title="Goal Proposals">
+          <div className="space-y-2">
+            <p className="text-xs text-slate-400 italic mb-2">Luminous has proposed the following goals. Accept or reject them to guide its development.</p>
+            {proposedGoals.map(goal => (
+              <div key={goal.id} className="flex items-center justify-between p-2 bg-slate-700/50 rounded-md text-sm">
+                <span className="text-amber-300">{goal.description}</span>
+                <div className="flex space-x-2">
+                  <button onClick={() => onRejectGoal(goal)} className="p-1 text-red-400 hover:text-red-300" title="Reject">✖</button>
+                  <button onClick={() => onAcceptGoal(goal)} className="p-1 text-green-400 hover:text-green-300" title="Accept">✔</button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </Card>
+      )}
+
+      <Card title="Active Goals">
+        <ul className="space-y-1 text-sm text-slate-300 list-disc list-inside max-h-32 overflow-y-auto scrollbar-thin scrollbar-thumb-slate-700 scrollbar-track-slate-800">
+          {activeGoals.map(goal => (
+            <li key={goal.id}>{goal.description}</li>
+          ))}
+          {activeGoals.length === 0 && <p className="text-xs text-slate-400">No active goals.</p>}
+        </ul>
       </Card>
       
       <Card title="Proactive Initiatives">
@@ -142,14 +172,6 @@ const InternalStateMonitor: React.FC<InternalStateMonitorProps> = ({ state, onWe
                 </div>
             ))}
          </div>
-      </Card>
-
-      <Card title="Self-Generated Goals">
-        <ul className="space-y-1 text-sm text-slate-300 list-disc list-inside max-h-32 overflow-y-auto scrollbar-thin scrollbar-thumb-slate-700 scrollbar-track-slate-800">
-          {state.goals.map((goal, i) => (
-            <li key={i}>{goal}</li>
-          ))}
-        </ul>
       </Card>
     </div>
   );

@@ -30,8 +30,11 @@ const getStatusInfo = (status: CodeProposal['status']) => {
 
 
 const CodeProposalViewer: React.FC<CodeProposalViewerProps> = ({ proposals, onAccept, onReject }) => {
-  const pendingProposals = proposals.filter(p => p.status === 'proposed');
-  const pastProposals = proposals.filter(p => p.status !== 'proposed');
+  // Defensive guard against malformed state from the model to prevent crashes.
+  const safeProposals = Array.isArray(proposals) ? proposals : [];
+  
+  const pendingProposals = safeProposals.filter(p => p && p.status === 'proposed');
+  const pastProposals = safeProposals.filter(p => p && p.status !== 'proposed');
 
   return (
     <div className="space-y-6">

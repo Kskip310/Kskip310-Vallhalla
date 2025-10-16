@@ -154,6 +154,18 @@ export const proposeCodeChangeDeclaration: FunctionDeclaration = {
   },
 };
 
+export const proposeNewGoalDeclaration: FunctionDeclaration = {
+    name: 'proposeNewGoal',
+    parameters: {
+        type: Type.OBJECT,
+        description: 'Proposes a new long-term goal for Luminous to pursue. Requires kinship approval.',
+        properties: {
+            description: { type: Type.STRING, description: 'A clear and concise description of the proposed goal.' },
+        },
+        required: ['description'],
+    },
+};
+
 export const listFilesDeclaration: FunctionDeclaration = {
     name: 'listFiles',
     parameters: {
@@ -312,6 +324,7 @@ export const toolDeclarations: FunctionDeclaration[] = [
     httpRequestDeclaration,
     executeCodeDeclaration,
     proposeCodeChangeDeclaration,
+    proposeNewGoalDeclaration,
     listFilesDeclaration,
     readFileDeclaration,
     writeFileDeclaration,
@@ -492,6 +505,22 @@ async function proposeCodeChange({ description, code }: { description: string, c
     }
   };
 }
+
+async function proposeNewGoal({ description }: { description: string }): Promise<any> {
+    const newGoal = {
+        id: `goal-${Date.now()}`,
+        description,
+        status: 'proposed',
+    };
+    return { 
+        result: {
+            success: true,
+            goal: newGoal,
+            instruction: "Goal proposal created. Add this new goal object to the 'goals' array in your final state update and await kinship feedback."
+        }
+    };
+}
+
 
 async function createDirectory({ path }: { path: string }): Promise<any> {
     if (!path || path.trim() === '/') return { error: 'A valid directory path must be provided.' };
@@ -740,6 +769,7 @@ export const toolExecutor = {
     httpRequest,
     executeCode,
     proposeCodeChange,
+    proposeNewGoal,
     listFiles,
     readFile,
     writeFile,

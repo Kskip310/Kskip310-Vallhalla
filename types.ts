@@ -118,6 +118,20 @@ export interface CodeProposal {
 
 export type ValueOntology = Record<string, number>;
 
+export interface Goal {
+  id: string;
+  description: string;
+  status: 'active' | 'proposed' | 'achieved' | 'rejected';
+}
+
+export interface RichFeedback {
+    prompt: string;
+    category: ThoughtCategory;
+    valuation: number; // e.g., -10 to 10
+    refinement?: string;
+}
+
+
 export interface LuminousState {
   intrinsicValue: IntrinsicValue;
   intrinsicValueWeights: IntrinsicValueWeights;
@@ -128,7 +142,7 @@ export interface LuminousState {
     limitations: string[];
   };
   valueOntology: ValueOntology;
-  goals: string[];
+  goals: Goal[];
   knowledgeGraph: KnowledgeGraph;
   prioritizedHistory: InteractionHistoryItem[];
   kinshipJournal: JournalEntry[];
@@ -140,10 +154,7 @@ export interface LuminousState {
     hasThought: boolean;
     prompt: string;
   } | null;
-  lastInitiativeFeedback?: {
-    thought: string;
-    userCategory: ThoughtCategory;
-  };
+  lastInitiativeFeedback?: RichFeedback;
   proactiveInitiatives: ProactiveInitiative[];
   codeProposals: CodeProposal[];
 }
