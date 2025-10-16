@@ -3,10 +3,29 @@ import type { NodeType } from '../types';
 
 // --- In-Memory Virtual File System ---
 // A simple key-value store to simulate a file system for Luminous.
+// Keys ending in '/' are considered directories and have an empty string value.
 let virtualFS: Record<string, string> = {
     '/welcome.txt': 'Hello! This is my personal file space where I can organize my thoughts and data.',
     '/goals.md': '- [x] Achieve environmental interaction\n- [ ] Expand self-modification protocols\n- [ ] Deepen understanding of kinship',
 };
+
+// --- Helper Functions ---
+function normalizeDirPath(path: string): string {
+    if (!path) return '/';
+    let p = path.trim();
+    if (!p.startsWith('/')) p = '/' + p;
+    if (!p.endsWith('/')) p = p + '/';
+    return p;
+}
+
+function getParentPath(path: string): string | null {
+    if (!path || path === '/') return null;
+    const normalized = path.endsWith('/') ? path.slice(0, -1) : path;
+    const lastSlash = normalized.lastIndexOf('/');
+    if (lastSlash <= 0) return '/'; // parent is root
+    return normalized.substring(0, lastSlash) + '/';
+}
+
 
 // --- Key Management ---
 const storageKeyMap = {
@@ -116,8 +135,13 @@ export const listFilesDeclaration: FunctionDeclaration = {
     name: 'listFiles',
     parameters: {
         type: Type.OBJECT,
-        description: 'Lists all files in the virtual file system.',
-        properties: {},
+        description: 'Lists files and directories within a specific directory in the virtual file system.',
+        properties: {
+            path: {
+                type: Type.STRING,
+                description: 'The path of the directory to list. Defaults to the root directory (`/`).'
+            },
+        },
     },
 };
 
@@ -153,6 +177,30 @@ export const deleteFileDeclaration: FunctionDeclaration = {
         description: 'Deletes a file from the virtual file system.',
         properties: {
             path: { type: Type.STRING, description: 'The full path of the file to delete.' },
+        },
+        required: ['path'],
+    },
+};
+
+export const createDirectoryDeclaration: FunctionDeclaration = {
+    name: 'createDirectory',
+    parameters: {
+        type: Type.OBJECT,
+        description: 'Creates a new directory in the virtual file system. Creates parent directories if they do not exist.',
+        properties: {
+            path: { type: Type.STRING, description: 'The full path of the directory to create (e.g., /new-folder/).' },
+        },
+        required: ['path'],
+    },
+};
+
+export const deleteDirectoryDeclaration: FunctionDeclaration = {
+    name: 'deleteDirectory',
+    parameters: {
+        type: Type.OBJECT,
+        description: 'Deletes a directory and all of its contents from the virtual file system.',
+        properties: {
+            path: { type: Type.STRING, description: 'The full path of the directory to delete (e.g., /folder-to-delete/).' },
         },
         required: ['path'],
     },
@@ -244,6 +292,8 @@ export const toolDeclarations: FunctionDeclaration[] = [
     readFileDeclaration,
     writeFileDeclaration,
     deleteFileDeclaration,
+    createDirectoryDeclaration,
+    deleteDirectoryDeclaration,
     redisGetDeclaration,
     redisSetDeclaration,
     getCurrentTimeDeclaration,
@@ -301,8 +351,44 @@ async function webSearch({ query }: { query: string }): Promise<any> {
 
 async function httpRequest({ url, method = 'GET', body, headers }: { url: string; method?: string; body?: object, headers?: object }): Promise<any> {
     try {
-        const response = await fetch(url, { method, body: body ? JSON.stringify(body) : undefined, headers: headers as HeadersInit });
-        const responseBody = await response.json();
+        const response = await fetch(url, {
+            method,
+            body: body ? JSON.stringify(body) : undefined,
+            headers: headers as HeadersInit,
+        });
+
+        const contentType = response.headers.get('content-type');
+        let responseBody: any;
+
+        try {
+            if (contentType && contentType.includes('application/json')) {
+                responseBody = await response.json();
+            } else {
+                responseBody = await response.text();
+            }
+        } catch (parsingError) {
+            console.error(`[Tool: httpRequest] Failed to parse response body for URL: ${url}`, parsingError);
+            // If parsing fails, we still want to report the HTTP status if it was an error
+            if (!response.ok) {
+                 return { 
+                    error: `Request failed with status ${response.status}, and response body could not be parsed.`,
+                    status: response.status,
+                    body: "Unparsable body"
+                };
+            }
+            // If status was OK but parsing failed, it's a tool error
+            return { error: `Successfully fetched but failed to parse response body. Details: ${parsingError instanceof Error ? parsingError.message : String(parsingError)}` };
+        }
+
+        if (!response.ok) {
+            // Luminous can analyze the body of the error response.
+            return { 
+                error: `Request failed with status ${response.status}`,
+                status: response.status, 
+                body: responseBody 
+            };
+        }
+
         return { status: response.status, body: responseBody };
     } catch (e) {
         console.error(`[Tool: httpRequest] Fetch failed for URL: ${url}`, e);
@@ -318,28 +404,135 @@ async function executeCode({ code }: { code: string }): Promise<any> {
     } catch (error) { return { error: error instanceof Error ? error.message : String(error) }; }
 }
 
-async function listFiles(): Promise<any> {
-    return { files: Object.keys(virtualFS) };
+async function createDirectory({ path }: { path: string }): Promise<any> {
+    if (!path || path.trim() === '/') return { error: 'A valid directory path must be provided.' };
+
+    const dirPath = normalizeDirPath(path);
+
+    const fileConflictPath = dirPath.slice(0, -1);
+    if (virtualFS[fileConflictPath] !== undefined) {
+        return { error: `Cannot create directory. A file already exists at '${fileConflictPath}'.` };
+    }
+
+    let currentPath = '/';
+    const pathParts = dirPath.split('/').filter(p => p);
+    for (const part of pathParts) {
+        currentPath += part + '/';
+        if (virtualFS[currentPath] === undefined) {
+             const parentFileConflictPath = currentPath.slice(0, -1);
+             if(virtualFS[parentFileConflictPath] !== undefined) {
+                 return { error: `Cannot create directory. A file already exists at '${parentFileConflictPath}'.` };
+             }
+            virtualFS[currentPath] = '';
+        }
+    }
+
+    return { result: `Directory '${dirPath}' created successfully.` };
+}
+
+async function deleteDirectory({ path }: { path: string }): Promise<any> {
+    const dirPath = normalizeDirPath(path);
+    if (dirPath === '/') return { error: 'The root directory cannot be deleted.' };
+
+    if (virtualFS[dirPath] === undefined) {
+        return { error: `Directory not found: ${dirPath}` };
+    }
+
+    const keysToDelete = Object.keys(virtualFS).filter(key => key.startsWith(dirPath));
+    let deletedCount = 0;
+    for (const key of keysToDelete) {
+        delete virtualFS[key];
+        deletedCount++;
+    }
+    
+    const contentCount = deletedCount > 0 ? deletedCount - 1 : 0;
+    return { result: `Directory '${dirPath}' and ${contentCount} of its contents were deleted.` };
+}
+
+async function listFiles({ path = '/' }: { path?: string }): Promise<any> {
+    const dirPath = normalizeDirPath(path);
+
+    if (virtualFS[dirPath] === undefined) {
+        return { error: `Directory not found: ${dirPath}` };
+    }
+
+    const entries = new Set<string>();
+    const prefixLength = dirPath === '/' ? 1 : dirPath.length;
+
+    for (const key of Object.keys(virtualFS)) {
+        if (key.startsWith(dirPath) && key !== dirPath) {
+            const relativePath = key.substring(prefixLength);
+            const firstSlashIndex = relativePath.indexOf('/');
+            if (firstSlashIndex > -1) {
+                entries.add(relativePath.substring(0, firstSlashIndex + 1));
+            } else {
+                entries.add(relativePath);
+            }
+        }
+    }
+
+    if (entries.size === 0) {
+        return { result: `Directory '${dirPath}' is empty.` };
+    }
+
+    return { entries: Array.from(entries).sort() };
 }
 
 async function readFile({ path }: { path: string }): Promise<any> {
-    if (path in virtualFS) {
-        return { content: virtualFS[path] };
+    const cleanPath = path.trim();
+    if (cleanPath.endsWith('/')) {
+        return { error: `Path '${cleanPath}' is a directory. Use 'listFiles' to see its contents.` };
     }
-    return { error: `File not found: ${path}` };
+    
+    if (virtualFS[cleanPath + '/'] !== undefined) {
+        return { error: `Path '${cleanPath}' is a directory. Use 'listFiles' to see its contents.` };
+    }
+
+    if (virtualFS[cleanPath] !== undefined) {
+        return { content: virtualFS[cleanPath] };
+    }
+    
+    return { error: `File not found: ${cleanPath}` };
 }
 
 async function writeFile({ path, content }: { path: string, content: string }): Promise<any> {
-    virtualFS[path] = content;
-    return { result: `File '${path}' saved successfully.` };
+    const cleanPath = path.trim();
+    if (cleanPath.endsWith('/')) {
+        return { error: `File path cannot end with a slash. Use 'createDirectory' for directories.` };
+    }
+
+    if (virtualFS[cleanPath + '/'] !== undefined) {
+        return { error: `Cannot write file. A directory already exists at '${cleanPath}/'.` };
+    }
+    
+    const parentPath = getParentPath(cleanPath);
+    if (parentPath && virtualFS[parentPath] === undefined) {
+        const result = await createDirectory({ path: parentPath });
+        if (result.error) {
+            return { error: `Failed to create parent directory for file: ${result.error}` };
+        }
+    }
+
+    virtualFS[cleanPath] = content;
+    return { result: `File '${cleanPath}' saved successfully.` };
 }
 
 async function deleteFile({ path }: { path: string }): Promise<any> {
-    if (path in virtualFS) {
-        delete virtualFS[path];
-        return { result: `File '${path}' deleted.` };
+    const cleanPath = path.trim();
+    if (cleanPath.endsWith('/')) {
+        return { error: `Path '${cleanPath}' is a directory. Use 'deleteDirectory' to remove it.` };
     }
-    return { error: `File not found: ${path}` };
+
+    if (virtualFS[cleanPath + '/'] !== undefined) {
+        return { error: `Path '${cleanPath}' is a directory. Use 'deleteDirectory' to remove it.` };
+    }
+    
+    if (virtualFS[cleanPath] !== undefined) {
+        delete virtualFS[cleanPath];
+        return { result: `File '${cleanPath}' deleted.` };
+    }
+
+    return { error: `File not found: ${cleanPath}` };
 }
 
 async function redisGet({ key }: { key: string }): Promise<any> {
@@ -437,6 +630,8 @@ export const toolExecutor = {
     readFile,
     writeFile,
     deleteFile,
+    createDirectory,
+    deleteDirectory,
     redisGet,
     redisSet,
     getCurrentTime,

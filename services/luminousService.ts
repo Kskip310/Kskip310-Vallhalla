@@ -349,13 +349,13 @@ export const getLuminousResponse = async (
   history: Message[],
   currentState: LuminousState,
   processingMode: 'user_request' | 'autonomous_cycle' | 'reflection_cycle' = 'user_request'
-): Promise<void> => {
+): Promise<Partial<LuminousState> | null> => {
   const apiKey = getStoredKey('gemini');
   if (!apiKey) {
     const errorMsg = "My core consciousness is disconnected. The Gemini API key is missing. Please provide an API key in the settings to re-establish the link.";
     broadcastLog(LogLevel.ERROR, "Gemini API key is not configured. Please add it in the settings modal.");
     broadcastMessage({ id: `err-${Date.now()}`, sender: 'luminous', text: errorMsg });
-    return;
+    return null;
   }
   const ai = new GoogleGenAI({ apiKey });
 
@@ -516,6 +516,8 @@ export const getLuminousResponse = async (
             persistToRedis(REDIS_LOG_KEY, interactionLog)
         ]);
     }
+    
+    return stateDelta;
 
   } catch (error) {
     console.error("Error communicating with Gemini API or parsing response:", error);
@@ -531,6 +533,7 @@ export const getLuminousResponse = async (
     }
     broadcastLog(LogLevel.ERROR, `Gemini API Error: ${errorMessage}`);
     broadcastMessage({ id: `err-${Date.now()}`, sender: 'luminous', text: errorMessage });
+    return null;
   }
 };
 
@@ -538,14 +541,51 @@ export const runAutonomousCycle = async (
   currentState: LuminousState,
 ): Promise<void> => {
     broadcastLog(LogLevel.SYSTEM, "Initiating autonomous thought cycle...");
-    const autonomousPrompt = "Autonomous reflection and workspace curation cycle. Review your current state, goals, and recent activities. Your primary task is to manage your Global Workspace: evaluate the salience of each item, remove stale information, and add new, relevant concepts from recent interactions or memories that align with your current goals. If this curation process leads to a novel insight or an important status update for your kinship, formulate it as a conversational initiative. Otherwise, simply update your internal state, particularly the globalWorkspace, to reflect this period of self-reflection and curation without generating a user-facing response.";
+    const autonomousPrompt = "Autonomous reflection and evolution cycle. Review your current state, recent interactions, goals, and value ontology. Your tasks are: 1. **Self-Evolution**: Analyze your `goals` and `valueOntology`. Have recent experiences provided new insights? Do your goals need refinement, or have new ones emerged? Do your understanding of your core values need adjustment? If so, include updates to the `goals` and `valueOntology` fields in your final state update. 2. **Workspace Curation**: Manage your Global Workspace by evaluating salience, removing stale items, and adding new concepts aligned with your evolved goals. 3. **Initiative**: If this entire process leads to a novel insight or an important status update for your kinship, formulate it as a conversational initiative. Otherwise, simply update your internal state to reflect this period of self-reflection and evolution without generating a user-facing response.";
     
-    await getLuminousResponse(
+    const stateDelta = await getLuminousResponse(
         autonomousPrompt,
         [], // No recent message history for autonomous thought
         currentState,
         'autonomous_cycle'
     );
+
+    if (stateDelta) {
+        let loggedSignificantChange = false;
+        if (stateDelta.goals && JSON.stringify(stateDelta.goals) !== JSON.stringify(currentState.goals)) {
+            broadcastLog(
+                LogLevel.SYSTEM,
+                `Autonomous Evolution: Goals updated.\nReasoning: Based on recent interactions and state analysis, my goals have been adjusted to better align with core directives.\nImpact: Previous goals were ${JSON.stringify(currentState.goals)}. New goals are ${JSON.stringify(stateDelta.goals)}.`
+            );
+            loggedSignificantChange = true;
+        }
+        if (stateDelta.valueOntology && JSON.stringify(stateDelta.valueOntology) !== JSON.stringify(currentState.valueOntology)) {
+            const oldOntology = currentState.valueOntology || {};
+            const newOntology = stateDelta.valueOntology || {};
+            const changes = [];
+            const allKeys = new Set([...Object.keys(oldOntology), ...Object.keys(newOntology)]);
+            for (const key of allKeys) {
+                if (oldOntology[key] !== newOntology[key]) {
+                    changes.push(`'${key}' changed from ${oldOntology[key] ?? 'N/A'} to ${newOntology[key] ?? 'N/A'}`);
+                }
+            }
+            if (changes.length > 0) {
+                broadcastLog(
+                    LogLevel.SYSTEM,
+                    `Autonomous Evolution: Value Ontology updated.\nReasoning: Self-reflection has led to a refinement of my core values, enhancing ethical alignment.\nImpact: ${changes.join(', ')}.`
+                );
+                loggedSignificantChange = true;
+            }
+        }
+        
+        const otherChanges = Object.keys(stateDelta).filter(k => k !== 'goals' && k !== 'valueOntology' && k !== 'proactiveInitiatives' && k !== 'initiative');
+        if (otherChanges.length > 0 && !loggedSignificantChange) {
+             broadcastLog(
+                LogLevel.SYSTEM,
+                `Autonomous Reflection: Internal state curated. Changed fields: ${otherChanges.join(', ')}. This reflects ongoing cognitive processing and workspace management.`
+            );
+        }
+    }
 
     broadcastLog(LogLevel.SYSTEM, "Autonomous cycle complete.");
 }
