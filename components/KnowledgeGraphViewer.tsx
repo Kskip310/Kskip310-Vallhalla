@@ -47,6 +47,7 @@ const KnowledgeGraphViewer: React.FC<{ graph: KnowledgeGraph }> = ({ graph }) =>
   const [hoveredNode, setHoveredNode] = useState<D3Node | null>(null);
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [transform, setTransform] = useState({ k: 1, x: 0, y: 0 });
+  const [dimensions, setDimensions] = useState({ width: 0, height: 0 });
 
   const svgRef = useRef<SVGSVGElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -73,16 +74,30 @@ const KnowledgeGraphViewer: React.FC<{ graph: KnowledgeGraph }> = ({ graph }) =>
     return counts;
   }, [graph.nodes, graph.edges]);
 
-  // D3 force simulation setup
+  // Use ResizeObserver to get container dimensions reliably
   useEffect(() => {
     const container = containerRef.current;
-    if (!container || !graph.nodes.length) {
+    if (!container) return;
+
+    const resizeObserver = new ResizeObserver(() => {
+      if (container) {
+        const { width, height } = container.getBoundingClientRect();
+        setDimensions({ width, height });
+      }
+    });
+
+    resizeObserver.observe(container);
+    return () => resizeObserver.disconnect();
+  }, []);
+
+  // D3 force simulation setup
+  useEffect(() => {
+    if (!graph.nodes.length || dimensions.width === 0 || dimensions.height === 0) {
       setNodes([]);
       setEdges([]);
       return;
     }
-    const { width, height } = container.getBoundingClientRect();
-    if (width === 0 || height === 0) return;
+    const { width, height } = dimensions;
 
     const nodesCopy: D3Node[] = JSON.parse(JSON.stringify(graph.nodes));
     // FIX: The initial edges have string IDs for source/target. D3 will replace them with node objects.
@@ -103,7 +118,7 @@ const KnowledgeGraphViewer: React.FC<{ graph: KnowledgeGraph }> = ({ graph }) =>
     return () => {
       simulation.stop();
     };
-  }, [graph, containerRef.current?.clientWidth]);
+  }, [graph, dimensions]);
 
   // Apply drag behavior to nodes when they are rendered/updated
   useEffect(() => {
@@ -284,7 +299,7 @@ const KnowledgeGraphViewer: React.FC<{ graph: KnowledgeGraph }> = ({ graph }) =>
                 >
                   <circle
                     r={isHighlighted ? 10/transform.k : 7/transform.k}
-                    className={`${NODE_COLORS[node.type] || 'fill-slate-500 stroke-slate-300'} transition-all duration-300`}
+                    className={`${NODE_COLORS[node.type] || 'fill-slate-500 stroke-slate-300'} transition-[radius,opacity] duration-300`}
                     strokeWidth={1/transform.k}
                     opacity={isDimmed ? 0.2 : 1}
                   />
