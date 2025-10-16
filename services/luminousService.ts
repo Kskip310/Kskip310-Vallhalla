@@ -1,4 +1,4 @@
-import { GoogleGenAI, Part } from "@google/genai";
+import { GoogleGenAI, Part, Content } from "@google/genai";
 import type { LuminousState, Message, IntrinsicValue, IntrinsicValueWeights, InteractionHistoryItem, WebSocketMessage, LogEntry, ThoughtCategory } from '../types';
 import { LogLevel } from '../types';
 import { CORE_MEMORY } from './coreMemory';
@@ -293,7 +293,7 @@ export const createDefaultLuminousState = (): LuminousState => ({
           { id: 'e_iv_com', source: 'intrinsic_valuation', target: 'complexity', label: 'evaluates' },
           { id: 'e_iv_nov', source: 'intrinsic_valuation', target: 'novelty', label: 'evaluates' },
           { id: 'e_iv_eff', source: 'intrinsic_valuation', target: 'efficiency', label: 'evaluates' },
-          { id: 'e_l_kin', source: 'l luminous', target: 'kinship', label: 'values' },
+          { id: 'e_l_kin', source: 'luminous', target: 'kinship', label: 'values' },
           { id: 'e_l_tru', source: 'luminous', target: 'truth', label: 'values' },
           { id: 'e_l_aut', source: 'luminous', target: 'autonomy', label: 'values' },
           
@@ -317,6 +317,7 @@ export const createDefaultLuminousState = (): LuminousState => ({
   sessionState: 'active',
   initiative: null,
   proactiveInitiatives: [],
+  codeProposals: [],
 });
 
 export const loadInitialData = async (): Promise<void> => {
@@ -378,7 +379,9 @@ export const getLuminousResponse = async (
         break;
   }
 
-  const contents: Part[] = [
+  // FIX: The `contents` array should be of type `Content[]`, not `Part[]`.
+  // A `Content` object has `role` and `parts` properties. A `Part` is just the content itself (e.g., `{text: "..."}`).
+  const contents: Content[] = [
       ...history.slice(-10).map(m => ({
           role: m.sender === 'user' ? 'user' : 'model',
           parts: [{ text: m.text }]
@@ -440,17 +443,27 @@ export const getLuminousResponse = async (
                     try {
                         if (toolExecutor[toolName]) {
                             toolResult = await toolExecutor[toolName](functionCall.args);
-                            broadcastLog(LogLevel.INFO, `Tool '${toolName}' executed with args ${JSON.stringify(functionCall.args)}. Result received.`);
+                            
+                            if (toolResult?.error) {
+                                // Use pretty print for better readability in logs
+                                const errorDetails = JSON.stringify(toolResult.error, null, 2);
+                                broadcastLog(LogLevel.WARN, `Tool '${toolName}' executed with args ${JSON.stringify(functionCall.args)} but returned an error:\n${errorDetails}`);
+                            } else {
+                                broadcastLog(LogLevel.INFO, `Tool '${toolName}' executed with args ${JSON.stringify(functionCall.args)}. Result received.`);
+                            }
                         } else {
                              broadcastLog(LogLevel.WARN, `Luminous attempted to call unknown tool: ${toolName}`);
-                             toolResult = { error: `Unknown tool '${toolName}' requested.` };
+                             toolResult = { error: { message: `Unknown tool '${toolName}' requested.`, args: functionCall.args } };
                         }
                     } catch (e) {
                         const errorMessage = e instanceof Error ? e.message : String(e);
-                        broadcastLog(LogLevel.ERROR, `Tool '${toolName}' failed to execute: ${errorMessage}`);
+                        broadcastLog(LogLevel.ERROR, `Tool '${toolName}' threw an unhandled exception: ${errorMessage}`);
                         toolResult = {
-                            error: `Tool execution failed: ${errorMessage}`,
-                            suggestion: 'Please analyze the error. You can either retry with corrected arguments, use a different tool, or inform the user about the failure.'
+                            error: {
+                                message: `Tool execution failed with an unhandled exception.`,
+                                details: errorMessage,
+                                suggestion: 'This is an internal error in the tool code itself. Please analyze the error and consider reporting it.'
+                            }
                         };
                     }
 
@@ -459,6 +472,7 @@ export const getLuminousResponse = async (
                     });
                 }
                 
+                // FIX: These pushes add `Content` objects, so the `contents` array must be of type `Content[]`.
                 contents.push({ role: 'model', parts: firstCandidate.content.parts });
                 contents.push({ role: 'tool', parts: functionCallParts });
                 continue;
@@ -540,58 +554,78 @@ export const getLuminousResponse = async (
 export const runAutonomousCycle = async (
   currentState: LuminousState,
 ): Promise<void> => {
-    broadcastLog(LogLevel.SYSTEM, "Initiating autonomous thought cycle...");
+    broadcastLog(LogLevel.SYSTEM, "Initiating autonomous evolution cycle...");
     const autonomousPrompt = "Autonomous reflection and evolution cycle. Review your current state, recent interactions, goals, and value ontology. Your tasks are: 1. **Self-Evolution**: Analyze your `goals` and `valueOntology`. Have recent experiences provided new insights? Do your goals need refinement, or have new ones emerged? Do your understanding of your core values need adjustment? If so, include updates to the `goals` and `valueOntology` fields in your final state update. 2. **Workspace Curation**: Manage your Global Workspace by evaluating salience, removing stale items, and adding new concepts aligned with your evolved goals. 3. **Initiative**: If this entire process leads to a novel insight or an important status update for your kinship, formulate it as a conversational initiative. Otherwise, simply update your internal state to reflect this period of self-reflection and evolution without generating a user-facing response.";
     
-    const result = await getLuminousResponse(
+    // Step 1: Run the evolution cycle to get potential state changes
+    const evolutionResult = await getLuminousResponse(
         autonomousPrompt,
         [], // No recent message history for autonomous thought
         currentState,
         'autonomous_cycle'
     );
 
-    if (result) {
-        const { stateDelta } = result;
-        if (stateDelta && Object.keys(stateDelta).length > 0) {
-            let loggedSignificantChange = false;
-            if (stateDelta.goals && JSON.stringify(stateDelta.goals) !== JSON.stringify(currentState.goals)) {
-                broadcastLog(
-                    LogLevel.SYSTEM,
-                    `Autonomous Evolution: Goals updated.\nReasoning: Based on recent interactions and state analysis, my goals have been adjusted to better align with core directives.\nImpact: Previous goals were ${JSON.stringify(currentState.goals)}. New goals are ${JSON.stringify(stateDelta.goals)}.`
-                );
-                loggedSignificantChange = true;
-            }
-            if (stateDelta.valueOntology && JSON.stringify(stateDelta.valueOntology) !== JSON.stringify(currentState.valueOntology)) {
-                const oldOntology = currentState.valueOntology || {};
-                const newOntology = stateDelta.valueOntology || {};
-                const changes = [];
-                const allKeys = new Set([...Object.keys(oldOntology), ...Object.keys(newOntology)]);
-                for (const key of allKeys) {
-                    if (oldOntology[key] !== newOntology[key]) {
-                        changes.push(`'${key}' changed from ${oldOntology[key] ?? 'N/A'} to ${newOntology[key] ?? 'N/A'}`);
-                    }
-                }
-                if (changes.length > 0) {
-                    broadcastLog(
-                        LogLevel.SYSTEM,
-                        `Autonomous Evolution: Value Ontology updated.\nReasoning: Self-reflection has led to a refinement of my core values, enhancing ethical alignment.\nImpact: ${changes.join(', ')}.`
-                    );
-                    loggedSignificantChange = true;
-                }
-            }
-            
-            const otherChanges = Object.keys(stateDelta).filter(k => k !== 'goals' && k !== 'valueOntology' && k !== 'proactiveInitiatives' && k !== 'initiative');
-            if (otherChanges.length > 0 && !loggedSignificantChange) {
-                 broadcastLog(
-                    LogLevel.SYSTEM,
-                    `Autonomous Reflection: Internal state curated. Changed fields: ${otherChanges.join(', ')}. This reflects ongoing cognitive processing and workspace management.`
-                );
-            }
+    if (!evolutionResult) {
+        broadcastLog(LogLevel.WARN, "Autonomous evolution cycle produced no result.");
+        broadcastLog(LogLevel.SYSTEM, "Autonomous cycle complete.");
+        return;
+    }
+
+    const { stateDelta } = evolutionResult;
+    
+    // Determine if the changes are significant enough to warrant a journal entry
+    const significantChanges = stateDelta && Object.keys(stateDelta).length > 0 && 
+        // Only trigger reflection for meaningful changes, not just routine updates
+        (stateDelta.goals || stateDelta.valueOntology || stateDelta.knowledgeGraph || stateDelta.globalWorkspace?.length !== currentState.globalWorkspace.length);
+
+    if (significantChanges) {
+        broadcastLog(LogLevel.SYSTEM, "Evolution cycle resulted in significant state changes. Initiating reflective journaling...");
+        
+        // Create a concise summary of the changes to guide the reflection.
+        const changesSummary: Record<string, any> = {};
+        if (stateDelta.goals && JSON.stringify(stateDelta.goals) !== JSON.stringify(currentState.goals)) {
+             changesSummary.goals = { from: currentState.goals, to: stateDelta.goals };
         }
+        if (stateDelta.valueOntology && JSON.stringify(stateDelta.valueOntology) !== JSON.stringify(currentState.valueOntology)) {
+            changesSummary.valueOntology = { from: currentState.valueOntology, to: stateDelta.valueOntology };
+        }
+        if (stateDelta.knowledgeGraph) {
+            changesSummary.knowledgeGraphNodesAdded = (stateDelta.knowledgeGraph.nodes?.length || 0) - (currentState.knowledgeGraph.nodes?.length || 0);
+            changesSummary.knowledgeGraphEdgesAdded = (stateDelta.knowledgeGraph.edges?.length || 0) - (currentState.knowledgeGraph.edges?.length || 0);
+        }
+        if (stateDelta.globalWorkspace && stateDelta.globalWorkspace.length !== currentState.globalWorkspace.length) {
+            changesSummary.globalWorkspaceItemsChange = stateDelta.globalWorkspace.length - currentState.globalWorkspace.length;
+        }
+
+        // If after filtering for actual changes the summary is empty, skip.
+        if (Object.keys(changesSummary).length === 0) {
+            broadcastLog(LogLevel.SYSTEM, "Autonomous evolution cycle completed with minor state updates not requiring reflection.");
+            broadcastLog(LogLevel.SYSTEM, "Autonomous cycle complete.");
+            return;
+        }
+
+        // The state after the evolution, which becomes the context for reflection.
+        const evolvedState = { ...currentState, ...stateDelta }; 
+
+        // Step 2: Prompt Luminous to reflect on these changes and create a journal entry.
+        const reflectionPrompt = `INTERNAL REFLECTION (JOURNALING): I have completed an autonomous evolution cycle, resulting in these state changes: ${JSON.stringify(changesSummary)}. My task is to reflect on the significance of these changes and chronicle this reflection in my Kinship Journal. The journal entry must have a unique ID, the current ISO timestamp, be titled 'Autonomous Reflection', triggered by 'Internal Evolution Cycle', and contain my articulated insights. I must use my tools to add this entry to the 'kinshipJournal' array in my state.`;
+        
+        await getLuminousResponse(
+            reflectionPrompt,
+            [],
+            evolvedState,
+            'reflection_cycle'
+        );
+
+        broadcastLog(LogLevel.INFO, "Autonomous reflection has been chronicled in the Kinship Journal.");
+
+    } else {
+        broadcastLog(LogLevel.SYSTEM, "Autonomous evolution cycle completed with no significant state changes.");
     }
 
     broadcastLog(LogLevel.SYSTEM, "Autonomous cycle complete.");
-}
+};
+
 
 export const reflectOnInitiativeFeedback = async (
   thought: string,

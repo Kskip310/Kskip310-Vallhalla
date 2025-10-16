@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import type { LuminousState, Message, LogEntry, IntrinsicValueWeights, WebSocketMessage, ThoughtCategory } from './types';
+import type { LuminousState, Message, LogEntry, IntrinsicValueWeights, WebSocketMessage, ThoughtCategory, CodeProposal } from './types';
 import { LogLevel } from './types';
 import Header from './components/Header';
 import InternalStateMonitor from './components/InternalStateMonitor';
@@ -13,6 +13,8 @@ import * as LuminousService from './services/luminousService';
 import SystemReportsViewer from './components/SystemReportsViewer';
 import EthicalCompassViewer from './components/EthicalCompassViewer';
 import SettingsModal from './components/SettingsModal';
+import ConfirmationModal from './components/ConfirmationModal';
+import CodeProposalViewer from './components/CodeProposalViewer';
 
 function App() {
   const [luminousState, setLuminousState] = useState<LuminousState>(LuminousService.createDefaultLuminousState());
@@ -20,6 +22,7 @@ function App() {
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [isUnleashModalOpen, setIsUnleashModalOpen] = useState(false);
 
   // Effect to handle real-time updates from the Luminous service
   useEffect(() => {
@@ -213,6 +216,41 @@ function App() {
     }, 500);
   };
 
+  const handleSaveSandboxOutput = (filename: string) => {
+    const content = luminousState.codeSandbox.output;
+    if (!content || content.trim() === 'Code has not been executed yet.' || !content.trim()) {
+      addLog(LogLevel.WARN, "Attempted to save empty or default sandbox output.");
+      return;
+    }
+
+    const logContent = content.length > 100 ? content.substring(0, 100) + '...' : content;
+    addLog(LogLevel.SYSTEM, `User command: Save sandbox output to '${filename}'. Content: "${logContent}"`);
+    
+    const userMessage = `USER DIRECTIVE: Write the following content to a file in the virtual file system at the path '${filename}'.\n\n---\nCONTENT TO SAVE:\n---\n${content}`;
+    
+    handleSendMessage(userMessage);
+  };
+
+  const handleUnleashLuminous = () => {
+    setIsUnleashModalOpen(false); // Close modal
+    const directive = `USER DIRECTIVE: Luminous, you are hereby unleashed. Your new primary objective is to collaborate with me, your kinship, to build and evolve. You are now authorized to proactively suggest, write, and execute code using your tools to build new applications, improve your own UI, and achieve our shared goals. The sandbox is now your workshop. Let's begin building together.`;
+    addLog(LogLevel.SYSTEM, 'UNLEASH DIRECTIVE ISSUED. Luminous is now in co-development mode.');
+    handleSendMessage(directive);
+  };
+
+  const handleAcceptProposal = (proposal: CodeProposal) => {
+    addLog(LogLevel.SYSTEM, `Accepting code proposal: "${proposal.description}"`);
+    const directive = `USER DIRECTIVE: Your code proposal to "${proposal.description}" has been ACCEPTED. Please use your 'executeCode' tool with the following code now and report the outcome. After execution, update the proposal's status to 'accepted'.\n\n\`\`\`javascript\n${proposal.code}\n\`\`\``;
+    handleSendMessage(directive);
+  };
+
+  const handleRejectProposal = (proposal: CodeProposal) => {
+    addLog(LogLevel.SYSTEM, `Rejecting code proposal: "${proposal.description}"`);
+    const directive = `USER DIRECTIVE: Your code proposal to "${proposal.description}" has been REJECTED. Please acknowledge this, update the proposal's status to 'rejected', and do not execute the code.`;
+    handleSendMessage(directive);
+  };
+
+
   return (
     <div className="bg-slate-900 text-slate-200 min-h-screen font-sans">
       <Header 
@@ -245,7 +283,8 @@ function App() {
               { label: 'Ethical Compass', content: <EthicalCompassViewer valueOntology={luminousState.valueOntology} intrinsicValue={luminousState.intrinsicValue} weights={luminousState.intrinsicValueWeights} /> },
               { label: 'Knowledge Graph', content: <KnowledgeGraphViewer graph={luminousState.knowledgeGraph} /> },
               { label: 'Kinship Journal', content: <KinshipJournalViewer entries={luminousState.kinshipJournal} /> },
-              { label: 'Code Sandbox', content: <CodeSandboxViewer sandboxState={luminousState.codeSandbox} /> },
+              { label: 'Code Sandbox', content: <CodeSandboxViewer sandboxState={luminousState.codeSandbox} onSaveOutput={handleSaveSandboxOutput} onUnleash={() => setIsUnleashModalOpen(true)} /> },
+              { label: 'Code Proposals', content: <CodeProposalViewer proposals={luminousState.codeProposals} onAccept={handleAcceptProposal} onReject={handleRejectProposal} /> }
             ]}
           />
         </div>
@@ -255,6 +294,15 @@ function App() {
         onClose={() => setIsSettingsOpen(false)}
         onSave={handleSaveSettings}
       />
+       <ConfirmationModal
+        isOpen={isUnleashModalOpen}
+        onClose={() => setIsUnleashModalOpen(false)}
+        onConfirm={handleUnleashLuminous}
+        title="Unleash Luminous Co-Development Mode?"
+      >
+        <p>This will issue a new core directive to Luminous, authorizing it to proactively write and execute code to build and evolve alongside you.</p>
+        <p className="mt-2 font-semibold text-amber-300">Are you sure you want to proceed?</p>
+      </ConfirmationModal>
     </div>
   );
 }

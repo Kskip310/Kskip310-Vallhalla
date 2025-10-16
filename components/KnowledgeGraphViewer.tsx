@@ -7,10 +7,21 @@ import { select as d3Select } from 'd3-selection';
 
 // --- Type Augmentation for D3 ---
 interface D3Node extends GraphNode, d3Force.SimulationNodeDatum {
+  // FIX: Explicitly add x and y properties. The d3 simulation adds these,
+  // but TypeScript isn't picking them up from SimulationNodeDatum.
+  x?: number;
+  y?: number;
   fx?: number | null;
   fy?: number | null;
 }
-interface D3Edge extends GraphEdge, d3Force.SimulationLinkDatum<D3Node> {}
+// FIX: Resolve the type conflict by creating a new interface for D3 that doesn't extend GraphEdge directly.
+// D3's force simulation expects source and target to be node objects after initialization.
+interface D3Edge extends d3Force.SimulationLinkDatum<D3Node> {
+    // We copy the properties from GraphEdge that we need.
+    id: string;
+    label: string;
+    weight?: number;
+}
 
 // --- Component ---
 const NODE_COLORS: Record<string, string> = {
@@ -39,7 +50,8 @@ const KnowledgeGraphViewer: React.FC<{ graph: KnowledgeGraph }> = ({ graph }) =>
 
   const svgRef = useRef<SVGSVGElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
-  const simulationRef = useRef<d3Force.Simulation<D3Node, D3Edge>>();
+  // FIX: Initialize useRef with null to satisfy stricter linting rules and improve type safety.
+  const simulationRef = useRef<d3Force.Simulation<D3Node, D3Edge> | null>(null);
 
   const edgeCounts = useMemo(() => {
     const counts = new Map<string, { in: number; out: number }>();
@@ -73,7 +85,9 @@ const KnowledgeGraphViewer: React.FC<{ graph: KnowledgeGraph }> = ({ graph }) =>
     if (width === 0 || height === 0) return;
 
     const nodesCopy: D3Node[] = JSON.parse(JSON.stringify(graph.nodes));
-    const edgesCopy: D3Edge[] = JSON.parse(JSON.stringify(graph.edges));
+    // FIX: The initial edges have string IDs for source/target. D3 will replace them with node objects.
+    // We cast to `any` to bridge this typing gap between GraphEdge[] and what D3 will turn into D3Edge[].
+    const edgesCopy: D3Edge[] = JSON.parse(JSON.stringify(graph.edges)) as any;
 
     const simulation = d3Force.forceSimulation(nodesCopy)
       .force("link", d3Force.forceLink<D3Node, D3Edge>(edgesCopy).id(d => d.id).distance(70))
@@ -116,7 +130,7 @@ const KnowledgeGraphViewer: React.FC<{ graph: KnowledgeGraph }> = ({ graph }) =>
     d3Select(svgRef.current)
         .selectAll<SVGGElement, D3Node>('g.node-group')
         .data(nodes, (d) => d.id)
-        .call(drag);
+        .call(drag as any);
   }, [nodes]);
 
 
@@ -186,7 +200,7 @@ const KnowledgeGraphViewer: React.FC<{ graph: KnowledgeGraph }> = ({ graph }) =>
   const findNodeById = (id: string | D3Node) => nodes.find(n => n.id === (typeof id === 'string' ? id : id.id));
   
   const renderTooltip = () => {
-    if (!hoveredNode || typeof hoveredNode.x !== 'number') return null;
+    if (!hoveredNode || typeof hoveredNode.x !== 'number' || typeof hoveredNode.y !== 'number') return null;
     const counts = edgeCounts.get(hoveredNode.id);
 
     return (
@@ -230,9 +244,12 @@ const KnowledgeGraphViewer: React.FC<{ graph: KnowledgeGraph }> = ({ graph }) =>
             </defs>
           <g style={{ transform: `translate(${transform.x}px, ${transform.y}px) scale(${transform.k})`, transition: 'transform 0.5s ease-out' }}>
             {edges.map(edge => {
-              const sourceNode = findNodeById(edge.source);
-              const targetNode = findNodeById(edge.target);
-              if (!sourceNode || !targetNode || typeof sourceNode.x !== 'number' || typeof targetNode.x !== 'number') return null;
+              // FIX: The d3 types are generic and allow `number` for source/target IDs, but our app only uses strings.
+              // We can safely cast to exclude `number` to satisfy TypeScript. In practice, after the simulation
+              // runs, these will be D3Node objects anyway.
+              const sourceNode = findNodeById(edge.source as string | D3Node);
+              const targetNode = findNodeById(edge.target as string | D3Node);
+              if (!sourceNode || !targetNode || typeof sourceNode.x !== 'number' || typeof targetNode.x !== 'number' || typeof sourceNode.y !== 'number' || typeof targetNode.y !== 'number') return null;
               
               const isHighlighted = highlightedEdgeIds.has(edge.id);
               const isDimmed = selectedNodeId && !isHighlighted;
@@ -250,7 +267,7 @@ const KnowledgeGraphViewer: React.FC<{ graph: KnowledgeGraph }> = ({ graph }) =>
               );
             })}
             {nodes.map(node => {
-              if (typeof node.x !== 'number') return null;
+              if (typeof node.x !== 'number' || typeof node.y !== 'number') return null;
               
               const isHighlighted = highlightedNodeIds.has(node.id);
               const isDimmed = selectedNodeId && !isHighlighted;

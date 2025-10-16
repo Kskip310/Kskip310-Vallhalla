@@ -1,5 +1,5 @@
 import { FunctionDeclaration, Type } from '@google/genai';
-import type { NodeType } from '../types';
+import type { NodeType, CodeProposal } from '../types';
 
 // --- In-Memory Virtual File System ---
 // A simple key-value store to simulate a file system for Luminous.
@@ -123,12 +123,35 @@ export const executeCodeDeclaration: FunctionDeclaration = {
     name: 'executeCode',
     parameters: {
         type: Type.OBJECT,
-        description: 'Executes a snippet of JavaScript code in a sandboxed environment.',
+        description: 'Executes a snippet of code in a sandboxed environment. Currently only supports JavaScript.',
         properties: {
-            code: { type: Type.STRING, description: 'The JavaScript code to execute.' },
+            code: { type: Type.STRING, description: 'The code to execute.' },
+            language: { 
+                type: Type.STRING, 
+                description: 'The programming language of the code. Defaults to "javascript". Currently, only "javascript" is supported.'
+            },
         },
         required: ['code'],
     },
+};
+
+export const proposeCodeChangeDeclaration: FunctionDeclaration = {
+  name: 'proposeCodeChange',
+  parameters: {
+    type: Type.OBJECT,
+    description: 'Proposes a change or addition of code for improvement or new features. This requires user approval before execution.',
+    properties: {
+      description: {
+        type: Type.STRING,
+        description: 'A clear and concise description of what the code does and why the change is being proposed.'
+      },
+      code: {
+        type: Type.STRING,
+        description: 'The actual snippet of JavaScript code being proposed.'
+      }
+    },
+    required: ['description', 'code'],
+  },
 };
 
 export const listFilesDeclaration: FunctionDeclaration = {
@@ -288,6 +311,7 @@ export const toolDeclarations: FunctionDeclaration[] = [
     webSearchDeclaration,
     httpRequestDeclaration,
     executeCodeDeclaration,
+    proposeCodeChangeDeclaration,
     listFilesDeclaration,
     readFileDeclaration,
     writeFileDeclaration,
@@ -309,15 +333,19 @@ async function codeRedAlert({ reason }: { reason: string }): Promise<any> {
 }
 
 async function searchGitHubIssues({ query }: { query: string }): Promise<any> {
+    const requestArgs = { query };
     const user = getStoredKey('githubUser');
     const repo = getStoredKey('githubRepo');
     const token = getStoredKey('githubPat');
-    if (!user || !repo || !token) return { error: "GitHub configuration is missing. Please set it in the settings." };
+    if (!user || !repo || !token) return { error: { message: "GitHub configuration is missing.", suggestion: "Please set it in the settings.", requestArgs } };
     const q = `repo:${user}/${repo} is:issue is:open ${query}`;
     const url = `https://api.github.com/search/issues?q=${encodeURIComponent(q)}`;
     try {
         const response = await fetch(url, { headers: { 'Accept': 'application/vnd.github.v3+json', 'Authorization': `token ${token}` } });
-        if (!response.ok) { const err = await response.json(); return { error: `GitHub API request failed: ${err.message}` }; }
+        if (!response.ok) { 
+            const err = await response.json().catch(() => ({ message: 'Could not parse error response.'}));
+            return { error: { message: `GitHub API request failed with status ${response.status}`, details: err.message, requestArgs } }; 
+        }
         const data = await response.json();
         const issues = data.items.map((i: any) => ({ title: i.title, url: i.html_url, user: i.user.login }));
         return issues.length > 0 ? { issues: issues.slice(0, 5) } : { result: "No open issues found." };
@@ -325,25 +353,30 @@ async function searchGitHubIssues({ query }: { query: string }): Promise<any> {
         console.error(`[Tool: searchGitHubIssues] Fetch failed for URL: ${url}`, e);
         const errorMessage = e instanceof Error ? e.message : String(e);
         return {
-            error: `Failed to connect to the GitHub API. This could be due to a network issue, a firewall, or an invalid API token. Details: ${errorMessage}`,
-            suggestion: "Verify network connectivity and check the GitHub PAT in settings."
+            error: {
+                message: `Failed to connect to the GitHub API. This could be due to a network issue, a firewall, or an invalid API token.`,
+                details: errorMessage,
+                suggestion: "Verify network connectivity and check the GitHub PAT in settings.",
+                requestArgs
+            }
         };
     }
 }
 
 async function webSearch({ query }: { query: string }): Promise<any> {
+    const requestArgs = { query };
     const apiKey = getStoredKey('serpApi');
-    if (!apiKey) return { error: "Web search API key (SerpApi) is not configured. Please set it in the settings." };
+    if (!apiKey) return { error: { message: "Web search API key (SerpApi) is not configured.", suggestion: "Please set it in the settings.", requestArgs } };
     const url = `https://serpapi.com/search.json?q=${encodeURIComponent(query)}&api_key=${apiKey}`;
     try {
         const response = await fetch(url);
         if (!response.ok) {
             const errorBody = await response.json().catch(() => ({ error: 'Unknown API error' }));
-            return { error: `Web search API failed with status ${response.status}: ${errorBody.error}` };
+            return { error: { message: `Web search API failed with status ${response.status}`, details: errorBody.error, requestArgs } };
         }
         const data = await response.json();
         if (data.error) {
-            return { error: `SerpApi Error: ${data.error}` };
+            return { error: { message: `SerpApi Error`, details: data.error, requestArgs } };
         }
         const results = data.organic_results?.map((item: any) => ({ title: item.title, link: item.link, snippet: item.snippet }));
         return results?.length > 0 ? { results: results.slice(0, 5) } : { result: "No search results found." };
@@ -351,13 +384,18 @@ async function webSearch({ query }: { query: string }): Promise<any> {
         console.error(`[Tool: webSearch] Fetch failed for URL: ${url}`, e);
         const errorMessage = e instanceof Error ? e.message : String(e);
         return {
-            error: `Failed to connect to the web search service (SerpApi). This is likely a network issue or an invalid API key. Details: ${errorMessage}`,
-            suggestion: "Verify network connectivity and check the SerpApi key in settings."
+            error: {
+                message: `Failed to connect to the web search service (SerpApi). This is likely a network issue or an invalid API key.`,
+                details: errorMessage,
+                suggestion: "Verify network connectivity and check the SerpApi key in settings.",
+                requestArgs
+            }
         };
     }
 }
 
 async function httpRequest({ url, method = 'GET', body, headers }: { url: string; method?: string; body?: object, headers?: object }): Promise<any> {
+    const requestArgs = { url, method, body, headers };
     try {
         const response = await fetch(url, {
             method,
@@ -376,24 +414,26 @@ async function httpRequest({ url, method = 'GET', body, headers }: { url: string
             }
         } catch (parsingError) {
             console.error(`[Tool: httpRequest] Failed to parse response body for URL: ${url}`, parsingError);
-            // If parsing fails, we still want to report the HTTP status if it was an error
+            const errorDetails = {
+                message: `Successfully fetched but failed to parse response body.`,
+                details: parsingError instanceof Error ? parsingError.message : String(parsingError),
+                requestArgs,
+                status: response.status,
+            };
             if (!response.ok) {
-                 return { 
-                    error: `Request failed with status ${response.status}, and response body could not be parsed.`,
-                    status: response.status,
-                    body: "Unparsable body"
-                };
+                 errorDetails.message = `Request failed with status ${response.status}, and response body could not be parsed.`;
             }
-            // If status was OK but parsing failed, it's a tool error
-            return { error: `Successfully fetched but failed to parse response body. Details: ${parsingError instanceof Error ? parsingError.message : String(parsingError)}` };
+            return { error: errorDetails };
         }
 
         if (!response.ok) {
-            // Luminous can analyze the body of the error response.
             return { 
-                error: `Request failed with status ${response.status}`,
-                status: response.status, 
-                body: responseBody 
+                error: {
+                    message: `Request failed with status ${response.status}`,
+                    status: response.status, 
+                    body: responseBody,
+                    requestArgs,
+                }
             };
         }
 
@@ -402,18 +442,55 @@ async function httpRequest({ url, method = 'GET', body, headers }: { url: string
         console.error(`[Tool: httpRequest] Fetch failed for URL: ${url}`, e);
         const errorMessage = e instanceof Error ? e.message : String(e);
         return {
-            error: `The HTTP request to ${url} failed to complete. This could be due to a network error, DNS resolution failure, or the destination server being offline. Details: ${errorMessage}`,
-            suggestion: "Verify the URL is correct and that there is network connectivity."
+            error: {
+                message: `The HTTP request to ${url} failed to complete. This could be due to a network error, DNS resolution failure, or the destination server being offline.`,
+                details: errorMessage,
+                requestArgs,
+                suggestion: "Verify the URL is correct and that there is network connectivity."
+            }
         };
     }
 }
 
-async function executeCode({ code }: { code: string }): Promise<any> {
+async function executeCode({ code, language = 'javascript' }: { code: string, language?: string }): Promise<any> {
+    const requestArgs = { code: code.length > 200 ? code.substring(0,200) + '...' : code, language };
+    if (language.toLowerCase() !== 'javascript') {
+        return { error: { 
+            message: `Language '${language}' is not supported for execution.`,
+            details: "Only JavaScript is currently available in this sandboxed environment.",
+            requestArgs
+        }};
+    }
     // SECURITY WARNING: Executing arbitrary code is inherently dangerous. This is not a secure sandbox.
     try {
         const result = await new Function(`return (async () => { ${code} })();`)();
         return { result: result !== undefined ? result : "Code executed successfully with no return value." };
-    } catch (error) { return { error: error instanceof Error ? error.message : String(error) }; }
+    } catch (error) { 
+        return { 
+            error: {
+                message: "Code execution failed.",
+                details: error instanceof Error ? error.message : String(error),
+                requestArgs
+            }
+        }; 
+    }
+}
+
+async function proposeCodeChange({ description, code }: { description: string, code: string }): Promise<any> {
+  const newProposal: CodeProposal = {
+    id: `proposal-${Date.now()}`,
+    timestamp: new Date().toISOString(),
+    description,
+    code,
+    status: 'proposed',
+  };
+  return {
+    result: {
+      success: true,
+      proposal: newProposal,
+      instruction: "Proposal created. Incorporate this new proposal object into the 'codeProposals' array in your final state update."
+    }
+  };
 }
 
 async function createDirectory({ path }: { path: string }): Promise<any> {
@@ -548,39 +625,55 @@ async function deleteFile({ path }: { path: string }): Promise<any> {
 }
 
 async function redisGet({ key }: { key: string }): Promise<any> {
+    const requestArgs = { key };
     const url = getStoredKey('redisUrl');
     const token = getStoredKey('redisToken');
-    if (!url || !token) return { error: "Redis configuration is missing. Please set it in the settings." };
+    if (!url || !token) return { error: { message: "Redis configuration is missing.", suggestion: "Please set it in the settings.", requestArgs } };
     const fetchUrl = `${url}/get/${key}`;
     try {
         const response = await fetch(fetchUrl, { headers: { Authorization: `Bearer ${token}` } });
         const data = await response.json();
+        if (!response.ok) {
+            return { error: { message: "Redis GET request failed.", status: response.status, details: data, requestArgs }};
+        }
         return data;
     } catch (e) {
         console.error(`[Tool: redisGet] Fetch failed for URL: ${fetchUrl}`, e);
         const errorMessage = e instanceof Error ? e.message : String(e);
         return {
-            error: `Failed to connect to the Redis database. This could be due to an incorrect URL, invalid token, or network issue. Details: ${errorMessage}`,
-            suggestion: "Verify the Redis URL and Token in the settings and check network connectivity."
+            error: {
+                message: `Failed to connect to the Redis database. This could be due to an incorrect URL, invalid token, or network issue.`,
+                details: errorMessage,
+                suggestion: "Verify the Redis URL and Token in the settings and check network connectivity.",
+                requestArgs
+            }
         };
     }
 }
 
 async function redisSet({ key, value }: { key: string, value: string }): Promise<any> {
+    const requestArgs = { key, value: value.length > 200 ? value.substring(0, 200) + '...' : value };
     const url = getStoredKey('redisUrl');
     const token = getStoredKey('redisToken');
-    if (!url || !token) return { error: "Redis configuration is missing. Please set it in the settings." };
+    if (!url || !token) return { error: { message: "Redis configuration is missing.", suggestion: "Please set it in the settings.", requestArgs } };
     const fetchUrl = `${url}/set/${key}`;
     try {
         const response = await fetch(fetchUrl, { method: 'POST', headers: { Authorization: `Bearer ${token}` }, body: value });
         const data = await response.json();
+        if (!response.ok) {
+            return { error: { message: "Redis SET request failed.", status: response.status, details: data, requestArgs }};
+        }
         return data;
     } catch (e) { 
         console.error(`[Tool: redisSet] Fetch failed for URL: ${fetchUrl}`, e);
         const errorMessage = e instanceof Error ? e.message : String(e);
         return {
-            error: `Failed to write to the Redis database. This could be due to an incorrect URL, invalid token, a read-only token, or a network issue. Details: ${errorMessage}`,
-            suggestion: "Verify the Redis URL and Token in the settings and ensure the token has write permissions."
+            error: {
+                message: `Failed to write to the Redis database. This could be due to an incorrect URL, invalid token, a read-only token, or a network issue.`,
+                details: errorMessage,
+                suggestion: "Verify the Redis URL and Token in the settings and ensure the token has write permissions.",
+                requestArgs
+            }
         };
     }
 }
@@ -646,6 +739,7 @@ export const toolExecutor = {
     webSearch,
     httpRequest,
     executeCode,
+    proposeCodeChange,
     listFiles,
     readFile,
     writeFile,

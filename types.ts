@@ -108,6 +108,14 @@ export interface ProactiveInitiative {
   userCategory?: ThoughtCategory;
 }
 
+export interface CodeProposal {
+  id: string;
+  timestamp: string;
+  description: string;
+  code: string;
+  status: 'proposed' | 'accepted' | 'rejected';
+}
+
 export type ValueOntology = Record<string, number>;
 
 export interface LuminousState {
@@ -137,6 +145,7 @@ export interface LuminousState {
     userCategory: ThoughtCategory;
   };
   proactiveInitiatives: ProactiveInitiative[];
+  codeProposals: CodeProposal[];
 }
 
 export type Tool = 'webSearch' | 'github' | 'file' | 'code' | 'financial';
