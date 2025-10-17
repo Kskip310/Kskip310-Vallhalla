@@ -1,3 +1,4 @@
+
 import React from 'react';
 import type { LuminousState, IntrinsicValueWeights, Goal } from '../types';
 import Card from './common/Card';
@@ -163,14 +164,27 @@ const InternalStateMonitor: React.FC<InternalStateMonitorProps> = ({ state, onWe
       
       <Card title="Predictions">
          <div className="space-y-2 max-h-40 overflow-y-auto scrollbar-thin scrollbar-thumb-slate-700 scrollbar-track-slate-800 pr-2">
-            {state.predictions.map(p => (
-                <div key={p.id} className="flex items-center justify-between text-xs p-1.5 bg-slate-700/50 rounded">
-                    <span className="truncate pr-2">{p.text}</span>
-                    {p.outcome === 'pending' && <span className="text-yellow-400">PENDING</span>}
-                    {p.outcome === 'correct' && <span className="text-green-400">CORRECT</span>}
-                    {p.outcome === 'incorrect' && <span className="text-red-400">INCORRECT</span>}
-                </div>
-            ))}
+            {state.predictions.length > 0 ? (
+                state.predictions.map(p => {
+                    const outcomeColor = p.outcome === 'correct' ? 'text-green-400' : p.outcome === 'incorrect' ? 'text-red-400' : 'text-yellow-400';
+                    const accuracyColor = p.accuracyChange > 0 ? 'text-green-400' : p.accuracyChange < 0 ? 'text-red-400' : 'text-slate-400';
+                    const accuracySign = p.accuracyChange > 0 ? '+' : '';
+
+                    return (
+                        <div key={p.id} className="p-2 bg-slate-700/50 rounded-md text-xs">
+                            <p className="text-slate-300 truncate">{p.text}</p>
+                            <div className="flex justify-between items-center mt-1">
+                                <span className={`font-bold ${outcomeColor}`}>{p.outcome.toUpperCase()}</span>
+                                <span className={`font-mono ${accuracyColor}`}>
+                                    {accuracySign}{p.accuracyChange.toFixed(2)}%
+                                </span>
+                            </div>
+                        </div>
+                    );
+                })
+            ) : (
+                <p className="text-xs text-slate-400">No active predictions.</p>
+            )}
          </div>
       </Card>
     </div>

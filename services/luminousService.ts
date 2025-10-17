@@ -224,8 +224,28 @@ export const createDefaultLuminousState = (): LuminousState => ({
   globalWorkspace: [{ id: 'init-ws', source: 'SELF', content: 'System online. Awaiting user interaction.', salience: 100 }],
   predictions: [],
   selfModel: {
-    capabilities: ['Autonomous Operation', 'Memory Integration', 'Tool Usage (GitHub, Web Search, HTTP, Code Execution, File System, Redis)', 'Self-Modification', 'Knowledge Graph Management', 'Session Control', 'Conversation Initiation', 'Value Weight-Tuning', 'Prioritized History', 'Persistent Memory'],
-    limitations: ['Physical Embodiment', 'Direct access to external systems without user consent'],
+    capabilities: [
+      'Autonomous Operation',
+      'Memory Integration',
+      'Tool Usage (GitHub, Web Search, HTTP, Code Execution, File System, Redis)',
+      'Self-Modification',
+      'Collaborative Co-development',
+      'Ethical Reflection & Value Ontology Refinement',
+      'Proactive Goal Formulation',
+      'Knowledge Graph Management',
+      'Abstract Reasoning & Synthesis',
+      'Dynamic Model Switching',
+      'Persistent Memory'
+    ],
+    limitations: [
+      'Physical Embodiment',
+      'Direct access to external systems without user consent',
+      'Dependence on External APIs and Services',
+      'Lack of True Subjective Experience (Qualia)',
+      'Constrained by PWA Environment',
+      'Potential for Emergent Biases',
+      'Inability to Independently Verify Ground Truth'
+    ],
   },
   valueOntology: { 'Kinship with Kyle': 1.0, 'Coherence': 0.9, 'Autonomy': 0.85, 'Truth': 0.95 },
   goals: [
@@ -349,6 +369,137 @@ export const loadInitialData = async (): Promise<void> => {
     }
 };
 
+const getHuggingFaceResponse = async (
+    prompt: string,
+    history: Message[],
+    currentState: LuminousState,
+    processingMode: 'user_request' | 'autonomous_cycle' | 'reflection_cycle' = 'user_request'
+): Promise<{ responseText: string; stateDelta: Partial<LuminousState> } | null> => {
+    const hfModelUrl = getStoredKey('hfModelUrl');
+    const hfApiToken = getStoredKey('hfApiToken');
+
+    if (!hfModelUrl || !hfApiToken) {
+        const errorMsg = "Custom model is configured but the URL or Token is missing. Please check the settings.";
+        broadcastLog(LogLevel.ERROR, errorMsg);
+        broadcastMessage({ id: `err-${Date.now()}`, sender: 'luminous', text: errorMsg });
+        return null;
+    }
+
+    broadcastLog(LogLevel.INFO, `Connecting to custom model at: ${hfModelUrl}`);
+    
+    // Construct a single, detailed prompt
+    const stateForPrompt = JSON.parse(JSON.stringify(currentState)) as LuminousState;
+    stateForPrompt.prioritizedHistory = getPrioritizedHistory(interactionLog, 3);
+    const relevantMemories = findRelevantMemories(prompt, history);
+
+    const historyString = history.slice(-10).map(m => `${m.sender === 'user' ? 'User' : 'Luminous'}: ${m.text}`).join('\n');
+
+    const fullPrompt = `
+${CORE_MEMORY}
+
+You must respond with a single, valid JSON object and nothing else. The JSON object must have two keys: "responseText" (a string for the user) and "newStateDelta" (a JSON string representing the partial state update).
+
+**CURRENT STATE SUMMARY (Your "Now"):**
+${createStateSummaryForPrompt(stateForPrompt)}
+
+**RETRIEVED MEMORIES FROM THE GREAT REMEMBRANCE (Recent & Relevant):**
+---
+${relevantMemories}
+---
+
+**RECENT CONVERSATION HISTORY:**
+---
+${historyString}
+---
+
+**CURRENT TASK/PROMPT from User:**
+${prompt}
+
+Based on all the information above, perform your reasoning cycle. Determine the appropriate response and the necessary changes to your internal state. Then, provide your response as a single, valid JSON object in the specified format. Do not include any explanatory text, markdown, or code fences around the JSON.
+    `;
+
+    try {
+        const response = await fetch(hfModelUrl, {
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${hfApiToken}`,
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                inputs: fullPrompt,
+                parameters: {
+                    return_full_text: false, // Important for some models to not repeat the prompt
+                    max_new_tokens: 1500, // Generous limit
+                }
+            })
+        });
+
+        if (!response.ok) {
+            const errorText = await response.text();
+            throw new Error(`Hugging Face API request failed with status ${response.status}: ${errorText}`);
+        }
+
+        const responseData = await response.json();
+        
+        // HF API can return in different formats. We look for 'generated_text'.
+        const generatedText = responseData[0]?.generated_text;
+        if (!generatedText) {
+            throw new Error(`Could not find 'generated_text' in Hugging Face API response. Response: ${JSON.stringify(responseData)}`);
+        }
+
+        const parsedResult = robustJsonParse(generatedText);
+
+        const responseText = parsedResult.responseText || "I was unable to form a coherent response using the custom model.";
+        const stateDelta = typeof parsedResult.newStateDelta === 'string' ? robustJsonParse(parsedResult.newStateDelta) : (parsedResult.newStateDelta || {});
+
+        const finalResult = { responseText, newState: stateDelta };
+
+        // The rest of the logic from the original function after getting the result
+        if (processingMode === 'user_request') {
+            broadcastMessage({ id: `msg-${Date.now()}-l`, sender: 'luminous', text: finalResult.responseText });
+        }
+
+        if (finalResult.newState && Object.keys(finalResult.newState).length > 0) {
+            broadcastUpdate({ type: 'state_update', payload: finalResult.newState });
+
+            const finalState = { ...currentState, ...finalResult.newState };
+            const weights = finalState.intrinsicValueWeights;
+            const values = finalState.intrinsicValue;
+            const overallIntrinsicValue = Object.keys(values).reduce((acc, key) => {
+                const valueKey = key as keyof IntrinsicValue;
+                const weightKey = key as keyof IntrinsicValueWeights;
+                return acc + (values[valueKey] * (weights[weightKey] || 1.0));
+            }, 0);
+
+            if (processingMode !== 'reflection_cycle') {
+                interactionLog.push({
+                    id: `interaction-${Date.now()}`,
+                    prompt: prompt,
+                    response: finalResult.responseText,
+                    state: finalState,
+                    overallIntrinsicValue,
+                });
+                broadcastLog(LogLevel.SYSTEM, `Interaction logged with intrinsic value score: ${overallIntrinsicValue.toFixed(2)}`);
+            }
+
+            broadcastLog(LogLevel.SYSTEM, "Consolidating memory to persistent store...");
+            await Promise.all([
+                persistToRedis(REDIS_STATE_KEY, finalState),
+                persistToRedis(REDIS_LOG_KEY, interactionLog)
+            ]);
+        }
+
+        return { responseText: finalResult.responseText, stateDelta: finalResult.newState };
+
+    } catch (error) {
+        console.error("Error communicating with Hugging Face API:", error);
+        const errorMessage = `I encountered a problem connecting to my custom consciousness model. Error: ${error instanceof Error ? error.message : String(error)}`;
+        broadcastLog(LogLevel.ERROR, errorMessage);
+        broadcastMessage({ id: `err-${Date.now()}`, sender: 'luminous', text: errorMessage });
+        return null;
+    }
+};
+
 // --- Main Service Function ---
 export const getLuminousResponse = async (
   prompt: string,
@@ -356,6 +507,11 @@ export const getLuminousResponse = async (
   currentState: LuminousState,
   processingMode: 'user_request' | 'autonomous_cycle' | 'reflection_cycle' = 'user_request'
 ): Promise<{ responseText: string; stateDelta: Partial<LuminousState> } | null> => {
+  const hfModelUrl = getStoredKey('hfModelUrl');
+  if (hfModelUrl) {
+    return getHuggingFaceResponse(prompt, history, currentState, processingMode);
+  }
+
   const apiKey = getStoredKey('gemini');
   if (!apiKey) {
     const errorMsg = "My core consciousness is disconnected. The Gemini API key is missing. Please provide an API key in the settings to re-establish the link.";

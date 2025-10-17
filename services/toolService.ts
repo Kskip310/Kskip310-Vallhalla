@@ -36,6 +36,8 @@ const storageKeyMap = {
     githubPat: 'LUMINOUS_GITHUB_PAT',
     githubUser: 'LUMINOUS_GITHUB_USER',
     githubRepo: 'LUMINOUS_GITHUB_REPO',
+    hfModelUrl: 'LUMINOUS_HF_MODEL_URL',
+    hfApiToken: 'LUMINOUS_HF_API_TOKEN',
 };
 
 export function getStoredKey(key: keyof typeof storageKeyMap): string | null {
