@@ -1,4 +1,3 @@
-
 import { GoogleGenAI, Part, Content } from "@google/genai";
 import type { LuminousState, Message, IntrinsicValue, IntrinsicValueWeights, InteractionHistoryItem, WebSocketMessage, LogEntry, RichFeedback } from '../types';
 import { LogLevel } from '../types';
@@ -47,7 +46,8 @@ function robustJsonParse(jsonString: string): any {
     try {
         return JSON.parse(cleanedString);
     } catch (e) {
-        broadcastLog(LogLevel.WARN, `Initial JSON.parse failed: ${e instanceof Error ? e.message : String(e)}. Attempting to clean and retry.`);
+        const errorMessage = e instanceof Error ? e.message : String(e);
+        broadcastLog(LogLevel.WARN, `Initial JSON.parse failed: ${errorMessage}. Attempting to clean and retry.`);
     }
 
     // 3. If it fails, try to extract a JSON object or array from the string
@@ -72,7 +72,8 @@ function robustJsonParse(jsonString: string): any {
     try {
         return JSON.parse(potentialJson);
     } catch (e2) {
-        broadcastLog(LogLevel.ERROR, `Failed to parse extracted JSON. Error: ${e2 instanceof Error ? e2.message : String(e2)}. Extracted string: ${potentialJson}`);
+        const errorMessage = e2 instanceof Error ? e2.message : String(e2);
+        broadcastLog(LogLevel.ERROR, `Failed to parse extracted JSON. Error: ${errorMessage}. Extracted string: ${potentialJson}`);
         return {}; // Return empty object as a fallback
     }
 }
@@ -541,8 +542,6 @@ export const getLuminousResponse = async (
         break;
   }
 
-  // FIX: The `contents` array should be of type `Content[]`, not `Part[]`.
-  // A `Content` object has `role` and `parts` properties. A `Part` is just the content itself (e.g., `{text: "..."}`).
   const contents: Content[] = [
       ...history.slice(-10).map(m => ({
           role: m.sender === 'user' ? 'user' : 'model',
@@ -634,7 +633,6 @@ export const getLuminousResponse = async (
                     });
                 }
                 
-                // FIX: These pushes add `Content` objects, so the `contents` array must be of type `Content[]`.
                 contents.push({ role: 'model', parts: firstCandidate.content.parts });
                 contents.push({ role: 'tool', parts: functionCallParts });
                 continue;
