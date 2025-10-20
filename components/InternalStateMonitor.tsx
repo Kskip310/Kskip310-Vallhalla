@@ -1,4 +1,5 @@
 
+
 import React from 'react';
 import type { LuminousState, IntrinsicValueWeights, Goal } from '../types';
 import Card from './common/Card';
@@ -43,8 +44,13 @@ const InternalStateMonitor: React.FC<InternalStateMonitorProps> = ({ state, onWe
     });
   };
   
-  const proposedGoals = state.goals.filter(g => g.status === 'proposed');
-  const activeGoals = state.goals.filter(g => g.status === 'active');
+  const proposedGoals = (state.goals || []).filter(g => g.status === 'proposed');
+  const activeGoals = (state.goals || []).filter(g => g.status === 'active');
+  const proactiveInitiatives = state.proactiveInitiatives || [];
+  const prioritizedHistory = state.prioritizedHistory || [];
+  const globalWorkspace = state.globalWorkspace || [];
+  const predictions = state.predictions || [];
+
 
   return (
     <div className="flex flex-col space-y-4">
@@ -105,10 +111,10 @@ const InternalStateMonitor: React.FC<InternalStateMonitorProps> = ({ state, onWe
       
       <Card title="Proactive Initiatives">
         <div className="space-y-2 max-h-48 overflow-y-auto scrollbar-thin scrollbar-thumb-slate-700 scrollbar-track-slate-800 pr-2">
-          {state.proactiveInitiatives.length === 0 ? (
+          {proactiveInitiatives.length === 0 ? (
             <p className="text-sm text-slate-400">No autonomous initiatives yet.</p>
           ) : (
-            [...state.proactiveInitiatives].reverse().map(item => (
+            [...proactiveInitiatives].reverse().map(item => (
               <div key={item.id} className="p-2 bg-slate-700/50 rounded-md text-xs">
                 <p className="text-slate-300 italic truncate">"{item.prompt}"</p>
                 <div className="flex justify-between items-center mt-1">
@@ -141,10 +147,10 @@ const InternalStateMonitor: React.FC<InternalStateMonitorProps> = ({ state, onWe
 
        <Card title="Prioritized Interaction History">
         <div className="space-y-2 max-h-48 overflow-y-auto scrollbar-thin scrollbar-thumb-slate-700 scrollbar-track-slate-800 pr-2">
-          {state.prioritizedHistory.length === 0 ? (
+          {prioritizedHistory.length === 0 ? (
             <p className="text-sm text-slate-400">No significant interactions logged yet.</p>
           ) : (
-            state.prioritizedHistory.map(item => (
+            prioritizedHistory.map(item => (
               <div key={item.id} className="p-2 bg-slate-700/50 rounded-md text-xs">
                 <p className="font-semibold text-purple-300">Score: {item.intrinsicValueScore.toFixed(2)}</p>
                 <p className="text-slate-300 truncate"><span className="font-bold text-slate-400">User:</span> {item.prompt}</p>
@@ -158,10 +164,10 @@ const InternalStateMonitor: React.FC<InternalStateMonitorProps> = ({ state, onWe
 
       <Card title="Global Workspace">
         <div className="space-y-2 max-h-48 overflow-y-auto scrollbar-thin scrollbar-thumb-slate-700 scrollbar-track-slate-800 pr-2">
-          {state.globalWorkspace.length === 0 ? (
+          {globalWorkspace.length === 0 ? (
             <p className="text-sm text-slate-400">Workspace is empty.</p>
           ) : (
-            state.globalWorkspace.map(item => (
+            globalWorkspace.map(item => (
               <div key={item.id} className="p-2 bg-slate-700/50 rounded-md text-xs">
                 <p className="font-semibold text-cyan-300">{item.source}</p>
                 <p className="text-slate-300 truncate">{item.content}</p>
@@ -176,8 +182,8 @@ const InternalStateMonitor: React.FC<InternalStateMonitorProps> = ({ state, onWe
       
       <Card title="Predictions">
          <div className="space-y-2 max-h-40 overflow-y-auto scrollbar-thin scrollbar-thumb-slate-700 scrollbar-track-slate-800 pr-2">
-            {state.predictions.length > 0 ? (
-                state.predictions.map(p => {
+            {predictions.length > 0 ? (
+                predictions.map(p => {
                     const outcomeColor = p.outcome === 'correct' ? 'text-green-400' : p.outcome === 'incorrect' ? 'text-red-400' : 'text-yellow-400';
                     const accuracyColor = p.accuracyChange > 0 ? 'text-green-400' : p.accuracyChange < 0 ? 'text-red-400' : 'text-slate-400';
                     const accuracySign = p.accuracyChange > 0 ? '+' : '';

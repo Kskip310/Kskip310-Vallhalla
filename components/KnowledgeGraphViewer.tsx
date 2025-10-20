@@ -1,4 +1,5 @@
 
+
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import type { KnowledgeGraph, GraphNode, GraphEdge } from '../types';
 import * as d3Force from 'd3-force';
@@ -48,7 +49,8 @@ const styles = `
   }
 `;
 
-const KnowledgeGraphViewer: React.FC<{ graph: KnowledgeGraph }> = ({ graph }) => {
+const KnowledgeGraphViewer: React.FC<{ graph: KnowledgeGraph }> = ({ graph: initialGraph }) => {
+  const graph = initialGraph || { nodes: [], edges: [] };
   const [hoveredNode, setHoveredNode] = useState<D3Node | null>(null);
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [transform, setTransform] = useState({ k: 1, x: 0, y: 0 });
@@ -114,7 +116,7 @@ const KnowledgeGraphViewer: React.FC<{ graph: KnowledgeGraph }> = ({ graph }) =>
   // Main D3 setup and simulation effect
   useEffect(() => {
     const svgElement = svgRef.current;
-    if (!svgElement || !graph.nodes.length || dimensions.width === 0) return;
+    if (!svgElement || !graph.nodes || !graph.nodes.length || dimensions.width === 0) return;
     
     const { width, height } = dimensions;
 
@@ -203,7 +205,7 @@ const KnowledgeGraphViewer: React.FC<{ graph: KnowledgeGraph }> = ({ graph }) =>
     if (!selectedNodeId) return { highlightedNodeIds: new Set(), highlightedEdgeIds: new Set() };
     const nodes = new Set<string>([selectedNodeId]);
     const edges = new Set<string>();
-    graph.edges.forEach(edge => {
+    (graph.edges || []).forEach(edge => {
       if (edge.source === selectedNodeId) { nodes.add(edge.target); edges.add(edge.id); }
       if (edge.target === selectedNodeId) { nodes.add(edge.source); edges.add(edge.id); }
     });
@@ -300,7 +302,7 @@ const KnowledgeGraphViewer: React.FC<{ graph: KnowledgeGraph }> = ({ graph }) =>
       </div>
        <div className="px-4 py-2 border-t border-slate-700 bg-slate-800/50 rounded-b-lg text-xs text-slate-400 flex justify-between">
           <p>
-            {selectedNodeId ? `Selected: ${graph.nodes.find(n => n.id === selectedNodeId)?.label}` : 'Click to highlight. Drag to move.'}
+            {selectedNodeId ? `Selected: ${(graph.nodes || []).find(n => n.id === selectedNodeId)?.label}` : 'Click to highlight. Drag to move.'}
           </p>
           <p>Double-click node to zoom, background to reset.</p>
       </div>
