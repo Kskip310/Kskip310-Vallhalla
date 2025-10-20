@@ -23,8 +23,8 @@ const Header: React.FC<HeaderProps> = ({ onOverride, onOpenSettings }) => {
         </button>
          <button
           onClick={onOpenSettings}
-          className="p-2 text-slate-400 rounded-md hover:bg-slate-700 hover:text-cyan-400 transition-colors"
-          title="Configure API Key"
+          className="p-2 text-slate-400 hover:text-cyan-400 transition-colors"
+          title="Configure API Keys and Tools"
         >
           <SettingsIcon />
         </button>

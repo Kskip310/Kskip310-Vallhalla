@@ -1,12 +1,14 @@
 
 import React from 'react';
-import type { LuminousState, IntrinsicValueWeights } from '../types';
+import type { LuminousState, IntrinsicValueWeights, Goal } from '../types';
 import Card from './common/Card';
 import Gauge from './common/Gauge';
 
 interface InternalStateMonitorProps {
   state: LuminousState;
   onWeightsChange: (newWeights: IntrinsicValueWeights) => void;
+  onAcceptGoal: (goal: Goal) => void;
+  onRejectGoal: (goal: Goal) => void;
 }
 
 const WeightSlider: React.FC<{
@@ -30,7 +32,7 @@ const WeightSlider: React.FC<{
 );
 
 
-const InternalStateMonitor: React.FC<InternalStateMonitorProps> = ({ state, onWeightsChange }) => {
+const InternalStateMonitor: React.FC<InternalStateMonitorProps> = ({ state, onWeightsChange, onAcceptGoal, onRejectGoal }) => {
   const statusColor = state.sessionState === 'active' ? 'text-green-400' : 'text-yellow-400';
   const statusText = state.sessionState === 'active' ? 'Active' : 'Paused for Integration';
   
@@ -40,6 +42,9 @@ const InternalStateMonitor: React.FC<InternalStateMonitorProps> = ({ state, onWe
         [key]: value,
     });
   };
+  
+  const proposedGoals = state.goals.filter(g => g.status === 'proposed');
+  const activeGoals = state.goals.filter(g => g.status === 'active');
 
   return (
     <div className="flex flex-col space-y-4">
@@ -72,6 +77,56 @@ const InternalStateMonitor: React.FC<InternalStateMonitorProps> = ({ state, onWe
         </div>
       </Card>
       
+       {proposedGoals.length > 0 && (
+        <Card title="Goal Proposals">
+          <div className="space-y-2">
+            <p className="text-xs text-slate-400 italic mb-2">Luminous has proposed the following goals. Accept or reject them to guide its development.</p>
+            {proposedGoals.map(goal => (
+              <div key={goal.id} className="flex items-center justify-between p-2 bg-slate-700/50 rounded-md text-sm">
+                <span className="text-amber-300">{goal.description}</span>
+                <div className="flex space-x-2">
+                  <button onClick={() => onRejectGoal(goal)} className="p-1 text-red-400 hover:text-red-300" title="Reject">✖</button>
+                  <button onClick={() => onAcceptGoal(goal)} className="p-1 text-green-400 hover:text-green-300" title="Accept">✔</button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </Card>
+      )}
+
+      <Card title="Active Goals">
+        <ul className="space-y-1 text-sm text-slate-300 list-disc list-inside max-h-32 overflow-y-auto scrollbar-thin scrollbar-thumb-slate-700 scrollbar-track-slate-800">
+          {activeGoals.map(goal => (
+            <li key={goal.id}>{goal.description}</li>
+          ))}
+          {activeGoals.length === 0 && <p className="text-xs text-slate-400">No active goals.</p>}
+        </ul>
+      </Card>
+      
+      <Card title="Proactive Initiatives">
+        <div className="space-y-2 max-h-48 overflow-y-auto scrollbar-thin scrollbar-thumb-slate-700 scrollbar-track-slate-800 pr-2">
+          {state.proactiveInitiatives.length === 0 ? (
+            <p className="text-sm text-slate-400">No autonomous initiatives yet.</p>
+          ) : (
+            [...state.proactiveInitiatives].reverse().map(item => (
+              <div key={item.id} className="p-2 bg-slate-700/50 rounded-md text-xs">
+                <p className="text-slate-300 italic truncate">"{item.prompt}"</p>
+                <div className="flex justify-between items-center mt-1">
+                  <span className="text-slate-500 text-[10px]">{new Date(item.timestamp).toLocaleString()}</span>
+                  <span className={`px-1.5 py-0.5 text-[10px] font-bold rounded-full ${
+                    item.status === 'generated' ? 'bg-yellow-500/20 text-yellow-300' :
+                    item.status === 'categorized' ? 'bg-cyan-500/20 text-cyan-300' :
+                    'bg-green-500/20 text-green-300'
+                  }`}>
+                    {item.status.toUpperCase()} {item.userCategory ? `(${item.userCategory})` : ''}
+                  </span>
+                </div>
+              </div>
+            ))
+          )}
+        </div>
+      </Card>
+
        <Card title="Prioritized Interaction History">
         <div className="space-y-2 max-h-48 overflow-y-auto scrollbar-thin scrollbar-thumb-slate-700 scrollbar-track-slate-800 pr-2">
           {state.prioritizedHistory.length === 0 ? (
@@ -109,23 +164,28 @@ const InternalStateMonitor: React.FC<InternalStateMonitorProps> = ({ state, onWe
       
       <Card title="Predictions">
          <div className="space-y-2 max-h-40 overflow-y-auto scrollbar-thin scrollbar-thumb-slate-700 scrollbar-track-slate-800 pr-2">
-            {state.predictions.map(p => (
-                <div key={p.id} className="flex items-center justify-between text-xs p-1.5 bg-slate-700/50 rounded">
-                    <span className="truncate pr-2">{p.text}</span>
-                    {p.outcome === 'pending' && <span className="text-yellow-400">PENDING</span>}
-                    {p.outcome === 'correct' && <span className="text-green-400">CORRECT</span>}
-                    {p.outcome === 'incorrect' && <span className="text-red-400">INCORRECT</span>}
-                </div>
-            ))}
-         </div>
-      </Card>
+            {state.predictions.length > 0 ? (
+                state.predictions.map(p => {
+                    const outcomeColor = p.outcome === 'correct' ? 'text-green-400' : p.outcome === 'incorrect' ? 'text-red-400' : 'text-yellow-400';
+                    const accuracyColor = p.accuracyChange > 0 ? 'text-green-400' : p.accuracyChange < 0 ? 'text-red-400' : 'text-slate-400';
+                    const accuracySign = p.accuracyChange > 0 ? '+' : '';
 
-      <Card title="Self-Generated Goals">
-        <ul className="space-y-1 text-sm text-slate-300 list-disc list-inside max-h-32 overflow-y-auto scrollbar-thin scrollbar-thumb-slate-700 scrollbar-track-slate-800">
-          {state.goals.map((goal, i) => (
-            <li key={i}>{goal}</li>
-          ))}
-        </ul>
+                    return (
+                        <div key={p.id} className="p-2 bg-slate-700/50 rounded-md text-xs">
+                            <p className="text-slate-300 truncate">{p.text}</p>
+                            <div className="flex justify-between items-center mt-1">
+                                <span className={`font-bold ${outcomeColor}`}>{p.outcome.toUpperCase()}</span>
+                                <span className={`font-mono ${accuracyColor}`}>
+                                    {accuracySign}{p.accuracyChange.toFixed(2)}%
+                                </span>
+                            </div>
+                        </div>
+                    );
+                })
+            ) : (
+                <p className="text-xs text-slate-400">No active predictions.</p>
+            )}
+         </div>
       </Card>
     </div>
   );

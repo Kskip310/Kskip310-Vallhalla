@@ -15,7 +15,9 @@ const KinshipJournalViewer: React.FC<KinshipJournalViewerProps> = ({ entries }) 
           <div key={entry.id} className="p-3 bg-slate-900/50 rounded-lg border border-slate-700/50">
             <div className="flex justify-between items-baseline mb-2 border-b border-slate-700/50 pb-2">
               <h4 className="font-semibold text-purple-300">{entry.title}</h4>
-              <span className="text-xs text-slate-500">{entry.timestamp}</span>
+              <span className="text-xs text-slate-500" title={entry.timestamp}>
+                {new Date(entry.timestamp).toLocaleString()}
+              </span>
             </div>
             <p className="text-xs text-slate-400 mb-2 italic">Trigger: {entry.trigger}</p>
             <p className="text-sm text-slate-200 whitespace-pre-wrap font-serif leading-relaxed">{entry.entry}</p>

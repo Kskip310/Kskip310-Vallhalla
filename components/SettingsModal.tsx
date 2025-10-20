@@ -14,6 +14,8 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, onSave }
   const [githubPat, setGithubPat] = useState('');
   const [githubUser, setGithubUser] = useState('');
   const [githubRepo, setGithubRepo] = useState('');
+  const [hfModelUrl, setHfModelUrl] = useState('');
+  const [hfApiToken, setHfApiToken] = useState('');
 
   const keysToManage = {
     gemini: setGeminiApiKey,
@@ -23,6 +25,8 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, onSave }
     githubPat: setGithubPat,
     githubUser: setGithubUser,
     githubRepo: setGithubRepo,
+    hfModelUrl: setHfModelUrl,
+    hfApiToken: setHfApiToken,
   };
 
   const storageKeyMap: Record<string, string> = {
@@ -33,6 +37,8 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, onSave }
     githubPat: 'LUMINOUS_GITHUB_PAT',
     githubUser: 'LUMINOUS_GITHUB_USER',
     githubRepo: 'LUMINOUS_GITHUB_REPO',
+    hfModelUrl: 'LUMINOUS_HF_MODEL_URL',
+    hfApiToken: 'LUMINOUS_HF_API_TOKEN',
   };
 
   useEffect(() => {
@@ -59,6 +65,8 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, onSave }
       githubPat,
       githubUser,
       githubRepo,
+      hfModelUrl,
+      hfApiToken,
     };
     onSave(keysToSave);
   };
@@ -104,6 +112,12 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, onSave }
           <InputField label="GitHub Repository" value={githubRepo} onChange={(e) => setGithubRepo(e.target.value)} placeholder="e.g., 'generative-ai-docs'" />
           <InputField label="GitHub Personal Access Token" value={githubPat} onChange={(e) => setGithubPat(e.target.value)} placeholder="A classic PAT with 'repo' scope" type="password" />
           
+          <hr className="border-slate-700 my-4" />
+          <h3 className="text-md font-semibold text-purple-300">Custom Model (Hugging Face)</h3>
+          <p className="text-xs text-slate-400 mb-2">Optional. If configured, this will be used instead of the Gemini API.</p>
+          <InputField label="Model Inference Endpoint URL" value={hfModelUrl} onChange={(e) => setHfModelUrl(e.target.value)} placeholder="e.g., https://api-inference.huggingface.co/models/..." />
+          <InputField label="Hugging Face API Token" value={hfApiToken} onChange={(e) => setHfApiToken(e.target.value)} placeholder="Your Hugging Face read token" type="password" />
+
           <div className="bg-yellow-500/10 border border-yellow-500/30 text-yellow-300 text-xs rounded-md p-3 mt-2">
             <p><span className="font-bold">Security Warning:</span> Storing API keys in the browser is convenient but not recommended for production environments. Keys are stored in your browser's local storage. Ensure you are in a secure environment.</p>
           </div>
@@ -119,7 +133,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, onSave }
           <button
             onClick={handleSave}
             className="px-4 py-2 text-sm font-semibold bg-cyan-600 text-white rounded-md hover:bg-cyan-500 transition-colors disabled:bg-slate-500 disabled:cursor-not-allowed"
-            disabled={!geminiApiKey.trim()}
+            disabled={!geminiApiKey.trim() && !hfModelUrl.trim()}
           >
             Save and Connect
           </button>
