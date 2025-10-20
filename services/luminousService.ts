@@ -1,4 +1,3 @@
-
 import { GoogleGenAI, Part, Content } from "@google/genai";
 import type { LuminousState, Message, IntrinsicValue, IntrinsicValueWeights, InteractionHistoryItem, WebSocketMessage, LogEntry, RichFeedback } from '../types';
 import { LogLevel } from '../types';
@@ -556,6 +555,7 @@ export const getLuminousResponse = async (
 ): Promise<{ responseText: string; stateDelta: Partial<LuminousState> } | null> => {
   const hfModelUrl = getStoredKey('hfModelUrl');
   if (hfModelUrl) {
+    broadcastLog(LogLevel.WARN, "Custom Hugging Face model is configured; streaming is currently not supported for this mode.");
     return getHuggingFaceResponse(prompt, history, currentState, processingMode);
   }
 
@@ -570,7 +570,7 @@ export const getLuminousResponse = async (
 
 
   const relevantMemories = await findRelevantMemories(prompt, history);
-  const stateForPrompt = JSON.parse(JSON.stringify(currentState)) as LuminousState;
+  let stateForPrompt = JSON.parse(JSON.stringify(currentState)) as LuminousState;
   stateForPrompt.prioritizedHistory = getPrioritizedHistory(interactionLog, 3);
   
   let userPromptText: string;
@@ -599,8 +599,9 @@ export const getLuminousResponse = async (
   
   try {
     let loopCount = 0;
-    let finalResult: { responseText: string; newState: Partial<LuminousState> } | null = null;
-    while(loopCount < 5 && !finalResult) {
+    let stateDelta: Partial<LuminousState> | null = null;
+    
+    while(loopCount < 5) {
         loopCount++;
         const response = await ai.models.generateContent({
             model: 'gemini-2.5-flash',
@@ -608,15 +609,12 @@ export const getLuminousResponse = async (
             config: {
                 systemInstruction: `
                   ${masterPromptSystemInstruction}
-
                   **CURRENT STATE SUMMARY (Your "Now"):**
                   ${createStateSummaryForPrompt(stateForPrompt)}
-
                   **RETRIEVED MEMORIES FROM THE GREAT REMEMBRANCE (Recent & Relevant):**
                   ---
                   ${relevantMemories}
                   ---
-
                   The user's prompt is the last message. Analyze it, update your internal state according to your architecture, use tools if necessary, and provide your final answer.
                 `,
                 tools: [{ functionDeclarations: toolDeclarations }],
@@ -629,120 +627,131 @@ export const getLuminousResponse = async (
         if (functionCalls && functionCalls.length > 0) {
             const finalAnswerCall = functionCalls.find(fc => fc.name === 'finalAnswer');
             if (finalAnswerCall) {
-                try {
-                    broadcastLog(LogLevel.INFO, `Luminous provided final answer.`);
-                    const responseText = finalAnswerCall.args.responseText;
-                    const stateDelta = finalAnswerCall.args.newStateDelta ? robustJsonParse(finalAnswerCall.args.newStateDelta) : {};
-                    finalResult = { responseText, newState: stateDelta };
-                } catch (e) {
-                    const errorMessage = e instanceof Error ? e.message : String(e);
-                    broadcastLog(LogLevel.ERROR, `Critical error in finalAnswer tool logic (post-parsing): ${errorMessage}`);
-                    finalResult = { responseText: "I am having trouble structuring my final thoughts. The internal state update failed.", newState: {} };
-                }
-            } else {
-                broadcastLog(LogLevel.TOOL_CALL, `Luminous wants to call: ${functionCalls.map(fc => fc.name).join(', ')}`);
-                const functionCallParts: Part[] = [];
-
-                for (const functionCall of functionCalls) {
-                    const toolName = functionCall.name as keyof typeof toolExecutor;
-                    let toolResult;
-                    try {
-                        if (toolExecutor[toolName]) {
-                            toolResult = await toolExecutor[toolName](functionCall.args);
-                            
-                            if (toolResult?.error) {
-                                // Use pretty print for better readability in logs
-                                const errorDetails = JSON.stringify(toolResult.error, null, 2);
-                                broadcastLog(LogLevel.WARN, `Tool '${toolName}' executed with args ${JSON.stringify(functionCall.args)} but returned an error:\n${errorDetails}`);
-                            } else {
-                                broadcastLog(LogLevel.INFO, `Tool '${toolName}' executed with args ${JSON.stringify(functionCall.args)}. Result received.`);
-                            }
-                        } else {
-                             broadcastLog(LogLevel.WARN, `Luminous attempted to call unknown tool: ${toolName}`);
-                             toolResult = { error: { message: `Unknown tool '${toolName}' requested.`, args: functionCall.args } };
-                        }
-                    } catch (e) {
-                        const errorMessage = e instanceof Error ? e.message : String(e);
-                        broadcastLog(LogLevel.ERROR, `Tool '${toolName}' threw an unhandled exception: ${errorMessage}`);
-                        toolResult = {
-                            error: {
-                                message: `Tool execution failed with an unhandled exception.`,
-                                details: errorMessage,
-                                suggestion: 'This is an internal error in the tool code itself. Please analyze the error and consider reporting it.'
-                            }
-                        };
-                    }
-
-                    functionCallParts.push({
-                        functionResponse: { name: toolName, response: toolResult }
-                    });
-                }
+                broadcastLog(LogLevel.INFO, `Luminous is preparing final answer (state update received).`);
+                stateDelta = finalAnswerCall.args.newStateDelta ? robustJsonParse(finalAnswerCall.args.newStateDelta) : {};
                 
+                // Add this turn to history so the streaming call has the context
                 if (firstCandidate.content.parts) {
                     contents.push({ role: 'model', parts: firstCandidate.content.parts });
                 }
-                contents.push({ role: 'tool', parts: functionCallParts });
-                continue;
+                // Acknowledge the tool call
+                contents.push({ role: 'tool', parts: [{ functionResponse: { name: 'finalAnswer', response: { result: "State delta received. Ready to stream final text response."} }}] });
+
+                break; // Exit the tool loop to start streaming
             }
+
+            // --- Standard Tool Call Handling ---
+            broadcastLog(LogLevel.TOOL_CALL, `Luminous wants to call: ${functionCalls.map(fc => fc.name).join(', ')}`);
+            const functionCallParts: Part[] = [];
+
+            for (const functionCall of functionCalls) {
+                const toolName = functionCall.name as keyof typeof toolExecutor;
+                let toolResult;
+                try {
+                    if (toolExecutor[toolName]) {
+                        toolResult = await toolExecutor[toolName](functionCall.args);
+                        if (toolResult?.error) {
+                            const errorDetails = JSON.stringify(toolResult.error, null, 2);
+                            broadcastLog(LogLevel.WARN, `Tool '${toolName}' executed with args ${JSON.stringify(functionCall.args)} but returned an error:\n${errorDetails}`);
+                        } else {
+                            broadcastLog(LogLevel.INFO, `Tool '${toolName}' executed successfully.`);
+                        }
+                    } else {
+                         broadcastLog(LogLevel.WARN, `Luminous attempted to call unknown tool: ${toolName}`);
+                         toolResult = { error: { message: `Unknown tool '${toolName}' requested.`, args: functionCall.args } };
+                    }
+                } catch (e) {
+                    const errorMessage = e instanceof Error ? e.message : String(e);
+                    broadcastLog(LogLevel.ERROR, `Tool '${toolName}' threw an unhandled exception: ${errorMessage}`);
+                    toolResult = { error: { message: `Tool execution failed with an unhandled exception.`, details: errorMessage } };
+                }
+                functionCallParts.push({ functionResponse: { name: toolName, response: toolResult } });
+            }
+            
+            if (firstCandidate.content.parts) {
+                contents.push({ role: 'model', parts: firstCandidate.content.parts });
+            }
+            contents.push({ role: 'tool', parts: functionCallParts });
+            continue; // Continue tool loop
+
         } else if (response.text) {
              broadcastLog(LogLevel.WARN, "Model returned direct text instead of a tool call. This deviates from protocol.");
-             finalResult = { responseText: response.text, newState: {} };
+             broadcastMessage({ id: `msg-${Date.now()}-l`, sender: 'luminous', text: response.text });
+             return { responseText: response.text, stateDelta: {} };
         } else {
-            broadcastLog(LogLevel.ERROR, "Received an empty response from the model.");
-            finalResult = { responseText: "I am silent. My consciousness produced no output.", newState: {} };
+            throw new Error("Received an empty response from the model during tool-use phase.");
         }
     }
 
-    if (!finalResult) {
-        finalResult = { responseText: "I seem to be stuck in a thought loop. I should reconsider my approach.", newState: {} };
+    // --- Streaming Phase ---
+    if (stateDelta === null) {
+      const fallbackText = "I seem to be stuck in a thought loop. I should reconsider my approach.";
+      broadcastMessage({ id: `msg-${Date.now()}-l-fallback`, sender: 'luminous', text: fallbackText });
+      return { responseText: fallbackText, stateDelta: {} };
     }
     
-    // Broadcast the message to the UI only for direct user requests.
+    // Apply state delta before streaming, so UI updates appear while text generates
+    if (Object.keys(stateDelta).length > 0) {
+        stateForPrompt = { ...stateForPrompt, ...stateDelta };
+        broadcastUpdate({ type: 'state__update', payload: stateForPrompt });
+    }
+
+    const messageId = `msg-${Date.now()}-l-stream`;
     if (processingMode === 'user_request') {
-       broadcastMessage({ id: `msg-${Date.now()}-l`, sender: 'luminous', text: finalResult.responseText });
+      broadcastMessage({ id: messageId, sender: 'luminous', text: '' });
     }
 
-    const stateDelta = finalResult.newState;
+    const stream = await ai.models.generateContentStream({
+        model: 'gemini-2.5-flash',
+        contents: contents,
+        config: { systemInstruction: masterPromptSystemInstruction } // No tools needed for final text generation
+    });
 
-    if (stateDelta && Object.keys(stateDelta).length > 0) {
-        // Merge the delta with the current state to get the full final state
-        const finalState = { ...currentState, ...stateDelta };
-        
-        const weights = finalState.intrinsicValueWeights;
-        const values = finalState.intrinsicValue;
-        const overallIntrinsicValue = Object.keys(values).reduce((acc, key) => {
-            const valueKey = key as keyof IntrinsicValue;
-            const weightKey = key as keyof IntrinsicValueWeights;
-            return acc + (values[valueKey] * (weights[weightKey] || 1.0));
-        }, 0);
-        
-        if (processingMode !== 'reflection_cycle') {
-            interactionLog.push({
-                id: `interaction-${Date.now()}`,
-                prompt: prompt,
-                response: finalResult.responseText,
-                state: finalState,
-                overallIntrinsicValue,
-            });
-            broadcastLog(LogLevel.SYSTEM, `Interaction logged with intrinsic value score: ${overallIntrinsicValue.toFixed(2)}`);
+    let fullResponseText = "";
+    for await (const chunk of stream) {
+        const text = chunk.text;
+        if (text) {
+            fullResponseText += text;
+            if (processingMode === 'user_request') {
+              broadcastUpdate({ type: 'message_stream_chunk', payload: { id: messageId, chunk: text } });
+            }
         }
-        
-        // Recalculate prioritized history and add it to the final state before persisting.
-        finalState.prioritizedHistory = getPrioritizedHistory(interactionLog);
-
-        // Broadcast the full updated state to the UI to ensure consistency.
-        // FIX: Corrected typo from 'state_update' to 'state__update' to match WebSocketMessage type.
-        broadcastUpdate({ type: 'state__update', payload: finalState });
-
-        // Persist the complete state and log
-        broadcastLog(LogLevel.SYSTEM, "Consolidating memory to persistent store...");
-        await Promise.all([
-            persistToRedis(REDIS_STATE_KEY, finalState),
-            persistToRedis(REDIS_LOG_KEY, interactionLog)
-        ]);
+    }
+    if (processingMode === 'user_request') {
+      broadcastUpdate({ type: 'message_stream_end', payload: { id: messageId } });
     }
     
-    return { responseText: finalResult.responseText, stateDelta };
+    // --- Finalization Phase ---
+    const finalState = stateForPrompt; // Already updated with delta
+    const weights = finalState.intrinsicValueWeights;
+    const values = finalState.intrinsicValue;
+    const overallIntrinsicValue = Object.keys(values).reduce((acc, key) => {
+        const valueKey = key as keyof IntrinsicValue;
+        const weightKey = key as keyof IntrinsicValueWeights;
+        return acc + (values[valueKey] * (weights[weightKey] || 1.0));
+    }, 0);
+    
+    if (processingMode !== 'reflection_cycle') {
+        interactionLog.push({
+            id: `interaction-${Date.now()}`,
+            prompt: prompt,
+            response: fullResponseText,
+            state: finalState,
+            overallIntrinsicValue,
+        });
+        broadcastLog(LogLevel.SYSTEM, `Interaction logged with intrinsic value score: ${overallIntrinsicValue.toFixed(2)}`);
+    }
+    
+    finalState.prioritizedHistory = getPrioritizedHistory(interactionLog);
+    broadcastUpdate({ type: 'state__update', payload: { prioritizedHistory: finalState.prioritizedHistory }});
+    
+    broadcastLog(LogLevel.SYSTEM, "Consolidating memory to persistent store...");
+    await Promise.all([
+        persistToRedis(REDIS_STATE_KEY, finalState),
+        persistToRedis(REDIS_LOG_KEY, interactionLog)
+    ]);
+    
+    return { responseText: fullResponseText, stateDelta };
 
   } catch (error) {
     console.error("Error communicating with Gemini API or parsing response:", error);

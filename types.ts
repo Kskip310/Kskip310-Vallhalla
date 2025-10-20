@@ -1,4 +1,3 @@
-
 import React from 'react';
 
 export type ThoughtCategory = 'Insight' | 'Question' | 'Status Update';
@@ -168,4 +167,6 @@ export type WebSocketMessage =
   | { type: 'state__update'; payload: Partial<LuminousState> }
   | { type: 'full_state_replace'; payload: LuminousState }
   | { type: 'log_add'; payload: LogEntry }
-  | { type: 'message_add'; payload: Message };
+  | { type: 'message_add'; payload: Message }
+  | { type: 'message_stream_chunk'; payload: { id: string; chunk: string } }
+  | { type: 'message_stream_end'; payload: { id: string } };

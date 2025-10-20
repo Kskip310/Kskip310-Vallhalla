@@ -52,18 +52,14 @@ export const finalAnswerDeclaration: FunctionDeclaration = {
     name: 'finalAnswer',
     parameters: {
         type: Type.OBJECT,
-        description: 'Call this function with the final user-facing response and the updated internal state. This is the last step in a processing cycle.',
+        description: 'Call this function with the updated internal state. This is the last step for state modification. After this is called, you MUST provide the final user-facing response as a direct text stream.',
         properties: {
-            responseText: {
-                type: Type.STRING,
-                description: 'The natural language response to be shown to the user.',
-            },
             newStateDelta: {
                 type: Type.STRING,
                 description: 'A valid JSON string representing a partial LuminousState object. This object should ONLY contain the fields of the state that have been changed or updated during this cycle. For example, if only the journal was updated, provide {"kinshipJournal": [...]}. This makes the response smaller and more reliable.',
             },
         },
-        required: ['responseText', 'newStateDelta'],
+        required: ['newStateDelta'],
     },
 };
 

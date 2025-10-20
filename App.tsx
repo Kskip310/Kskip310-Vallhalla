@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import type { LuminousState, Message, LogEntry, IntrinsicValueWeights, WebSocketMessage, RichFeedback, Goal } from './types';
 import { LogLevel } from './types';
@@ -73,6 +72,17 @@ function App() {
           break;
         case 'message_add':
           setMessages(prev => [...prev, payload as Message]);
+          break;
+        case 'message_stream_chunk':
+          const { id, chunk } = payload as { id: string; chunk: string };
+          setMessages(prev => prev.map(msg => 
+            msg.id === id 
+              ? { ...msg, text: msg.text + chunk }
+              : msg
+          ));
+          break;
+        case 'message_stream_end':
+          // Can be used for logic like re-enabling input, etc.
           break;
       }
     };
