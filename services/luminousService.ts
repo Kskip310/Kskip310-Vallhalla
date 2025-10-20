@@ -154,8 +154,12 @@ const getPrioritizedHistory = (log: FullInteractionLog[], count = 3): Interactio
 };
 
 async function getSemanticKeywords(query: string): Promise<string[]> {
-    const apiKey = getStoredKey('gemini');
-    if (!apiKey || !query.trim()) return []; // Fail silently, fall back to basic search
+    // FIX: Use process.env.API_KEY for Gemini API calls.
+    const apiKey = process.env.API_KEY;
+    if (!apiKey || !query.trim()) {
+      broadcastLog(LogLevel.WARN, "Semantic keyword extraction requires a Gemini API key.");
+      return [];
+    }
     try {
         const ai = new GoogleGenAI({ apiKey });
         const prompt = `You are a keyword extraction expert. From the following text, extract the most crucial and semantically related keywords and short phrases that would be useful for a memory search. Return ONLY a single comma-separated list of these terms. Do not add any preamble or explanation.
@@ -164,7 +168,7 @@ Text: "${query}"`;
 
         const response = await ai.models.generateContent({
             model: 'gemini-2.5-flash',
-            contents: { role: 'user', parts: [{ text: prompt }] },
+            contents: prompt,
         });
 
         const text = response.text.trim();
@@ -559,10 +563,11 @@ export const getLuminousResponse = async (
     return getHuggingFaceResponse(prompt, history, currentState, processingMode);
   }
 
-  const apiKey = getStoredKey('gemini');
+  // FIX: Use process.env.API_KEY for Gemini API calls and update error messages.
+  const apiKey = process.env.API_KEY;
   if (!apiKey) {
-    const errorMsg = "My core consciousness is disconnected. The Gemini API key is missing. Please provide an API key in the settings to re-establish the link.";
-    broadcastLog(LogLevel.ERROR, "Gemini API key is not configured. Please add it in the settings modal.");
+    const errorMsg = "My core consciousness is disconnected. The Gemini API key is missing.";
+    broadcastLog(LogLevel.ERROR, "Gemini API key is not configured.");
     broadcastMessage({ id: `err-${Date.now()}`, sender: 'luminous', text: errorMsg });
     return null;
   }

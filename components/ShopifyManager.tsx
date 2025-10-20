@@ -109,7 +109,8 @@ const ConnectedView: React.FC<{ onOpenSettings: () => void }> = ({ onOpenSetting
 };
 
 
-const ShopifyManager: React.FC<{ onOpenSettings: () => void }> = ({ onOpenSettings }) => {
+// FIX: Switched to named export to resolve module resolution issue.
+export const ShopifyManager: React.FC<{ onOpenSettings: () => void }> = ({ onOpenSettings }) => {
     const [hasCredentials, setHasCredentials] = useState(false);
     const [isLoading, setIsLoading] = useState(true);
 
@@ -173,5 +174,3 @@ const ShopifyManager: React.FC<{ onOpenSettings: () => void }> = ({ onOpenSettin
     
     return <ConnectedView onOpenSettings={onOpenSettings} />;
 };
-
-export default ShopifyManager;

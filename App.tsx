@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import type { LuminousState, Message, LogEntry, IntrinsicValueWeights, WebSocketMessage, RichFeedback, Goal } from './types';
 import { LogLevel } from './types';
 import Header from './components/Header';
@@ -14,7 +14,7 @@ import SystemReportsViewer from './components/SystemReportsViewer';
 import EthicalCompassViewer from './components/EthicalCompassViewer';
 import SettingsModal from './components/SettingsModal';
 import IdentificationModal from './components/IdentificationModal';
-import ShopifyManager from './components/ShopifyManager';
+import { ShopifyManager } from './components/ShopifyManager';
 
 function App() {
   const [luminousState, setLuminousState] = useState<LuminousState>(LuminousService.createDefaultLuminousState());
@@ -224,15 +224,15 @@ function App() {
 
   const handleSaveSettings = (keys: Record<string, string>) => {
     const storageKeyMap: Record<string, string> = {
-      gemini: 'Luminous_API_KEY',
-      redisUrl: 'Luminous_REDIS_URL',
-      redisToken: 'Luminous_REDIS_TOKEN',
-      serpApi: 'Luminous_SERP_API_KEY',
-      githubPat: 'Luminous_GITHUB_PAT',
-      githubUser: 'Luminous_GITHUB_USER',
-      githubRepo: 'Luminous_GITHUB_REPO',
-      hfModelUrl: 'Luminous_HF_MODEL_URL',
-      hfApiToken: 'Luminous_HF_API_TOKEN',
+      gemini: 'LUMINOUS_API_KEY',
+      redisUrl: 'LUMINOUS_REDIS_URL',
+      redisToken: 'LUMINOUS_REDIS_TOKEN',
+      serpApi: 'LUMINOUS_SERP_API_KEY',
+      githubPat: 'LUMINOUS_GITHUB_PAT',
+      githubUser: 'LUMINOUS_GITHUB_USER',
+      githubRepo: 'LUMINOUS_GITHUB_REPO',
+      hfModelUrl: 'LUMINOUS_HF_MODEL_URL',
+      hfApiToken: 'LUMINOUS_HF_API_TOKEN',
       shopifyStoreUrl: 'LUMINOUS_SHOPIFY_STORE_URL',
       shopifyAdminToken: 'LUMINOUS_SHOPIFY_ADMIN_TOKEN',
     };
