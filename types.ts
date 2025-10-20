@@ -1,7 +1,5 @@
 import React from 'react';
 
-export type ThoughtCategory = 'Insight' | 'Question' | 'Status Update';
-
 export interface Message {
   id: string;
   sender: 'user' | 'luminous';
@@ -54,7 +52,7 @@ export interface LogEntry {
 }
 
 // --- Knowledge Graph Types ---
-export type NodeType = 'architecture' | 'value' | 'concept' | 'goal' | 'directive' | 'tool';
+export type NodeType = 'architecture' | 'value' | 'concept' | 'goal';
 
 export interface GraphNode {
   id: string;
@@ -89,48 +87,7 @@ export interface JournalEntry {
   title: string;
   entry: string;
   trigger: string;
-  category?: ThoughtCategory;
 }
-
-export interface CodeSandboxState {
-  code: string;
-  output: string;
-  status: 'idle' | 'success' | 'error';
-}
-
-export type InitiativeStatus = 'generated' | 'categorized' | 'reflected';
-
-export interface ProactiveInitiative {
-  id: string;
-  timestamp: string;
-  prompt: string;
-  status: InitiativeStatus;
-  userCategory?: ThoughtCategory;
-}
-
-export interface CodeProposal {
-  id: string;
-  timestamp: string;
-  description: string;
-  code: string;
-  status: 'proposed' | 'accepted' | 'rejected';
-}
-
-export type ValueOntology = Record<string, number>;
-
-export interface Goal {
-  id: string;
-  description: string;
-  status: 'active' | 'proposed' | 'achieved' | 'rejected';
-}
-
-export interface RichFeedback {
-    prompt: string;
-    category: ThoughtCategory;
-    valuation: number; // e.g., -10 to 10
-    refinement?: string;
-}
-
 
 export interface LuminousState {
   intrinsicValue: IntrinsicValue;
@@ -141,29 +98,17 @@ export interface LuminousState {
     capabilities: string[];
     limitations: string[];
   };
-  valueOntology: ValueOntology;
-  goals: Goal[];
+  valueOntology: Record<string, number>;
+  goals: string[];
   knowledgeGraph: KnowledgeGraph;
   prioritizedHistory: InteractionHistoryItem[];
   kinshipJournal: JournalEntry[];
-  codeSandbox: CodeSandboxState;
-  currentTimezone: string;
   // New properties for autonomy and session control
   sessionState: 'active' | 'paused';
   initiative: {
     hasThought: boolean;
     prompt: string;
   } | null;
-  lastInitiativeFeedback?: RichFeedback;
-  proactiveInitiatives: ProactiveInitiative[];
-  codeProposals: CodeProposal[];
 }
 
 export type Tool = 'webSearch' | 'github' | 'file' | 'code' | 'financial';
-
-// --- Real-time Communication ---
-export type WebSocketMessage =
-  | { type: 'state_update'; payload: Partial<LuminousState> }
-  | { type: 'full_state_replace'; payload: LuminousState }
-  | { type: 'log_add'; payload: LogEntry }
-  | { type: 'message_add'; payload: Message };

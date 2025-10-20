@@ -1,305 +1,236 @@
 
-import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
-import type { KnowledgeGraph, GraphNode, GraphEdge } from '../types';
-import * as d3Force from 'd3-force';
-import { drag as d3Drag } from 'd3-drag';
-import { select as d3Select, Selection } from 'd3-selection';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
+import type { KnowledgeGraph, GraphNode } from '../types';
+import Card from './common/Card';
 
-// --- Type Augmentation for D3 ---
-interface D3Node extends GraphNode, d3Force.SimulationNodeDatum {
-  x?: number;
-  y?: number;
-  fx?: number | null;
-  fy?: number | null;
-}
-interface D3Edge extends d3Force.SimulationLinkDatum<D3Node> {
-    id: string;
-    label: string;
-    weight?: number;
+interface NodePosition {
+  id: string;
+  x: number;
+  y: number;
+  vx: number;
+  vy: number;
 }
 
-// --- Constants ---
 const NODE_COLORS: Record<string, string> = {
   architecture: 'fill-blue-500 stroke-blue-300',
   value: 'fill-purple-600 stroke-purple-400',
   concept: 'fill-cyan-500 stroke-cyan-300',
-  goal: 'fill-green-500 stroke-green-300',
-  directive: 'fill-amber-500 stroke-amber-300',
-  tool: 'fill-teal-500 stroke-teal-300',
+  goal: 'fill-amber-500 stroke-amber-300',
 };
 
-const styles = `
-  .kg-container {
-    background-color: #020617;
-    background-image: radial-gradient(circle, rgba(255, 255, 255, 0.05) 1px, transparent 1px);
-    background-size: 20px 20px;
-  }
-  .node-group {
-    transition: opacity 300ms ease-in-out;
-  }
-  .node-group circle {
-     transition: r 300ms ease-in-out;
-  }
-  .node-group text {
-     transition: opacity 300ms ease-in-out, y 300ms ease-in-out;
-  }
-  .link {
-    transition: stroke-opacity 300ms ease-in-out, stroke-width 300ms ease-in-out;
-  }
-`;
-
 const KnowledgeGraphViewer: React.FC<{ graph: KnowledgeGraph }> = ({ graph }) => {
-  const [hoveredNode, setHoveredNode] = useState<D3Node | null>(null);
-  const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
-  const [transform, setTransform] = useState({ k: 1, x: 0, y: 0 });
-  const [dimensions, setDimensions] = useState({ width: 0, height: 0 });
-
-  const svgRef = useRef<SVGSVGElement>(null);
+  const [positions, setPositions] = useState<Record<string, NodePosition>>({});
+  const [hoveredNode, setHoveredNode] = useState<GraphNode | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
-  const simulationRef = useRef<d3Force.Simulation<D3Node, D3Edge>>();
-  const nodeSelectionRef = useRef<Selection<SVGGElement, D3Node, SVGGElement, unknown>>();
-  const linkSelectionRef = useRef<Selection<SVGLineElement, D3Edge, SVGGElement, unknown>>();
-
-  const edgeCounts = useMemo(() => {
-    const counts = new Map<string, { in: number; out: number }>();
-    if (graph?.nodes && graph?.edges) {
-        graph.nodes.forEach(node => counts.set(node.id, { in: 0, out: 0 }));
-        graph.edges.forEach(edge => {
-            // FIX: The operand of an increment or decrement operator may not be an optional property access.
-            const sourceCount = counts.get(edge.source);
-            if (sourceCount) {
-                sourceCount.out++;
-            }
-            // FIX: The operand of an increment or decrement operator may not be an optional property access.
-            const targetCount = counts.get(edge.target);
-            if (targetCount) {
-                targetCount.in++;
-            }
-        });
-    }
-    return counts;
-  }, [graph.nodes, graph.edges]);
+  // FIX: Initialize useRef with a value (0) to satisfy linters or compilers that might incorrectly flag the no-argument version of useRef. This is likely the cause of the "Expected 1 arguments, but got 0" error on the nearby line.
+  const animationFrameRef = useRef<number>(0);
+  const [searchTerm, setSearchTerm] = useState('');
 
   useEffect(() => {
-    const container = containerRef.current;
-    if (!container) return;
-    const resizeObserver = new ResizeObserver(() => {
-      setDimensions({ width: container.offsetWidth, height: container.offsetHeight });
+    const { width, height } = containerRef.current?.getBoundingClientRect() || { width: 400, height: 400 };
+    
+    setPositions(prevPositions => {
+      const newPositions: Record<string, NodePosition> = {};
+      graph.nodes.forEach(node => {
+        if (prevPositions[node.id]) {
+          newPositions[node.id] = prevPositions[node.id];
+        } else {
+          newPositions[node.id] = {
+            id: node.id,
+            x: Math.random() * width,
+            y: Math.random() * height,
+            vx: 0,
+            vy: 0,
+          };
+        }
+      });
+      return newPositions;
     });
-    resizeObserver.observe(container);
-    return () => resizeObserver.disconnect();
-  }, []);
+  }, [graph.nodes]);
 
-  const handleNodeClick = useCallback((event: React.MouseEvent, nodeId: string) => {
-    event.stopPropagation();
-    setSelectedNodeId(prevId => (prevId === nodeId ? null : nodeId));
-  }, []);
-
-  const handleNodeDoubleClick = useCallback((event: React.MouseEvent, d: D3Node) => {
-    event.stopPropagation();
-    const { width, height } = dimensions;
-    if (!width || !height || typeof d.x !== 'number' || typeof d.y !== 'number') return;
-    
-    const scale = 1.5;
-    const x = width / 2 - scale * d.x;
-    const y = height / 2 - scale * d.y;
-    
-    setTransform({ k: scale, x, y });
-  }, [dimensions]);
-
-  // Main D3 setup and simulation effect
   useEffect(() => {
-    const svgElement = svgRef.current;
-    if (!svgElement || !graph.nodes.length || dimensions.width === 0) return;
-    
-    const { width, height } = dimensions;
+    const { width, height } = containerRef.current?.getBoundingClientRect() || { width: 400, height: 400 };
+    const centerX = width / 2;
+    const centerY = height / 2;
 
-    const nodesData: D3Node[] = JSON.parse(JSON.stringify(graph.nodes));
-    const edgesData: D3Edge[] = JSON.parse(JSON.stringify(graph.edges));
+    const updatePositions = () => {
+      setPositions(currentPositions => {
+        const newPositions = JSON.parse(JSON.stringify(currentPositions)) as Record<string, NodePosition>;
+        if (Object.keys(newPositions).length === 0) return {};
 
-    const simulation = simulationRef.current ?? d3Force.forceSimulation<D3Node>();
-    simulationRef.current = simulation;
+        // Forces - Tuned for a smoother, more stable layout
+        const repulsion = 800;
+        const attraction = 0.03;
+        const damping = 0.97;
+        const centerGravity = 0.02;
 
-    const svg = d3Select(svgElement);
-    const g = svg.select<SVGGElement>('g.main-container');
+        graph.nodes.forEach(nodeA => {
+          if (!newPositions[nodeA.id]) return;
+          // Center gravity
+          newPositions[nodeA.id].vx += (centerX - newPositions[nodeA.id].x) * centerGravity;
+          newPositions[nodeA.id].vy += (centerY - newPositions[nodeA.id].y) * centerGravity;
 
-    const tick = () => {
-      if (linkSelectionRef.current) {
-        linkSelectionRef.current
-          .attr('x1', d => (d.source as D3Node).x!)
-          .attr('y1', d => (d.source as D3Node).y!)
-          .attr('x2', d => (d.target as D3Node).x!)
-          .attr('y2', d => (d.target as D3Node).y!);
-      }
-      if (nodeSelectionRef.current) {
-        nodeSelectionRef.current.attr('transform', d => `translate(${d.x},${d.y})`);
-      }
+          graph.nodes.forEach(nodeB => {
+            if (nodeA.id === nodeB.id || !newPositions[nodeB.id]) return;
+            const dx = newPositions[nodeB.id].x - newPositions[nodeA.id].x;
+            const dy = newPositions[nodeB.id].y - newPositions[nodeA.id].y;
+            const distance = Math.sqrt(dx * dx + dy * dy) || 1;
+
+            const force = repulsion / (distance * distance);
+            newPositions[nodeA.id].vx -= force * (dx / distance);
+            newPositions[nodeA.id].vy -= force * (dy / distance);
+          });
+        });
+
+        graph.edges.forEach(edge => {
+          const sourcePos = newPositions[edge.source];
+          const targetPos = newPositions[edge.target];
+          if (!sourcePos || !targetPos) return;
+
+          const dx = targetPos.x - sourcePos.x;
+          const dy = targetPos.y - sourcePos.y;
+          
+          sourcePos.vx += dx * attraction;
+          sourcePos.vy += dy * attraction;
+          targetPos.vx -= dx * attraction;
+          targetPos.vy -= dy * attraction;
+        });
+
+        Object.values(newPositions).forEach(pos => {
+          pos.vx *= damping;
+          pos.vy *= damping;
+          pos.x += pos.vx;
+          pos.y += pos.vy;
+
+          pos.x = Math.max(10, Math.min(width - 10, pos.x));
+          pos.y = Math.max(10, Math.min(height - 10, pos.y));
+        });
+
+        return newPositions;
+      });
+
+      animationFrameRef.current = requestAnimationFrame(updatePositions);
     };
 
-    simulation
-      .nodes(nodesData)
-      .force('link', d3Force.forceLink<D3Node, D3Edge>(edgesData).id(d => d.id).distance(80))
-      .force('charge', d3Force.forceManyBody().strength(-400))
-      .force('center', d3Force.forceCenter(width / 2, height / 2))
-      .on('tick', tick);
-    
-    linkSelectionRef.current = g.selectAll<SVGLineElement, D3Edge>('line.link')
-      .data(edgesData, d => d.id)
-      .join('line')
-      .attr('class', 'link')
-      .attr('stroke', '#374151') // slate-700
-      .attr('marker-end', 'url(#arrowhead)');
+    animationFrameRef.current = requestAnimationFrame(updatePositions);
+    return () => {
+      if (animationFrameRef.current) {
+        cancelAnimationFrame(animationFrameRef.current);
+      }
+    };
+  }, [graph.nodes, graph.edges]); // Removed containerRef dependency to stabilize simulation
 
-    nodeSelectionRef.current = g.selectAll<SVGGElement, D3Node>('g.node-group')
-      .data(nodesData, d => d.id)
-      .join(enter => {
-        const group = enter.append('g').attr('class', 'node-group cursor-grab active:cursor-grabbing');
-        group.append('circle');
-        group.append('text')
-          .attr('y', 14)
-          .attr('text-anchor', 'middle')
-          .attr('class', 'fill-slate-200 select-none pointer-events-none')
-          .attr('paint-order', 'stroke')
-          .attr('stroke', '#020617')
-          .attr('stroke-linecap', 'round')
-          .attr('stroke-linejoin', 'round');
-        return group;
-      });
-
-    nodeSelectionRef.current.select('circle')
-      .attr('class', d => NODE_COLORS[d.type] || 'fill-slate-500 stroke-slate-300');
-    
-    nodeSelectionRef.current.select('text')
-      .text(d => d.label);
-
-    const drag = d3Drag<SVGGElement, D3Node>()
-      .on('start', (event, d) => {
-        if (!event.active) simulation.alphaTarget(0.3).restart();
-        d.fx = d.x; d.fy = d.y;
-      })
-      .on('drag', (event, d) => {
-        d.fx = event.x; d.fy = event.y;
-      })
-      .on('end', (event, d) => {
-        if (!event.active) simulation.alphaTarget(0);
-        d.fx = null; d.fy = null;
-      });
-
-    nodeSelectionRef.current
-        .on('mouseenter', (event, d) => setHoveredNode(d))
-        .on('mouseleave', () => setHoveredNode(null))
-        .call(drag as any);
-
-    simulation.alpha(1).restart();
-    
-  }, [graph, dimensions]);
-
-  // Highlighting effect
   const { highlightedNodeIds, highlightedEdgeIds } = useMemo(() => {
-    if (!selectedNodeId) return { highlightedNodeIds: new Set(), highlightedEdgeIds: new Set() };
-    const nodes = new Set<string>([selectedNodeId]);
-    const edges = new Set<string>();
-    graph.edges.forEach(edge => {
-      if (edge.source === selectedNodeId) { nodes.add(edge.target); edges.add(edge.id); }
-      if (edge.target === selectedNodeId) { nodes.add(edge.source); edges.add(edge.id); }
+    if (!searchTerm.trim()) {
+        return { highlightedNodeIds: new Set<string>(), highlightedEdgeIds: new Set<string>() };
+    }
+    const lowerCaseSearch = searchTerm.toLowerCase().trim();
+    const matchingNodeIds = new Set(graph.nodes.filter(n => n.label.toLowerCase().includes(lowerCaseSearch)).map(n => n.id));
+    
+    const matchingEdgeIds = new Set(graph.edges.filter(e => e.source && matchingNodeIds.has(e.source) || e.target && matchingNodeIds.has(e.target)).map(e => e.id));
+
+    matchingEdgeIds.forEach(edgeId => {
+        const edge = graph.edges.find(e => e.id === edgeId);
+        if (edge) {
+            matchingNodeIds.add(edge.source);
+            matchingNodeIds.add(edge.target);
+        }
     });
-    return { highlightedNodeIds: nodes, highlightedEdgeIds: edges };
-  }, [selectedNodeId, graph.edges]);
 
-  useEffect(() => {
-    const k = transform.k;
-    if (nodeSelectionRef.current) {
-        nodeSelectionRef.current.style('opacity', d => !selectedNodeId || highlightedNodeIds.has(d.id) ? 1 : 0.2);
-        nodeSelectionRef.current.select('circle')
-            .attr('r', d => (!selectedNodeId || highlightedNodeIds.has(d.id) ? 10 : 7) / k)
-            .attr('stroke-width', 1.5 / k);
-        nodeSelectionRef.current.select('text')
-            .style('opacity', d => !selectedNodeId || highlightedNodeIds.has(d.id) ? 1 : 0)
-            .attr('font-size', 10 / k)
-            .attr('stroke-width', (3 / k) + 'px')
-            .attr('y', d => (!selectedNodeId || highlightedNodeIds.has(d.id) ? 16 : 14) / k);
-    }
-    if (linkSelectionRef.current) {
-        linkSelectionRef.current.style('stroke-opacity', d => !selectedNodeId || highlightedEdgeIds.has(d.id) ? 0.7 : 0.1);
-        linkSelectionRef.current.attr('stroke-width', d => (!selectedNodeId || highlightedEdgeIds.has(d.id) ? 1.5 : 0.5) / k);
-    }
-  }, [selectedNodeId, highlightedNodeIds, highlightedEdgeIds, transform.k]);
-  
-  const resetZoom = () => {
-    setSelectedNodeId(null);
-    setTransform({ k: 1, x: 0, y: 0 });
-  };
-  
-  const renderTooltip = () => {
-    if (!hoveredNode || typeof hoveredNode.x !== 'number' || typeof hoveredNode.y !== 'number') return null;
-    const counts = edgeCounts.get(hoveredNode.id);
+    return { highlightedNodeIds: matchingNodeIds, highlightedEdgeIds: matchingEdgeIds };
+  }, [searchTerm, graph.nodes, graph.edges]);
 
-    return (
-      <div
-        className="absolute bg-slate-900/80 border border-slate-600 rounded-md p-2 text-xs shadow-lg pointer-events-none"
-        style={{ 
-          left: transform.x + (hoveredNode.x * transform.k) + 15, 
-          top: transform.y + (hoveredNode.y * transform.k) + 15
-        }}
-      >
-        <p className="font-bold text-cyan-400">{hoveredNode.label}</p>
-        <p className="text-slate-400 capitalize">Type: {hoveredNode.type}</p>
-        {hoveredNode.data && Object.entries(hoveredNode.data).map(([key, value]) => (
-          <p key={key} className="text-slate-300">{key}: {String(value)}</p>
-        ))}
-        {counts && (
-            <div className="mt-1 pt-1 border-t border-slate-700">
-                <p className="text-slate-300">
-                    Connections: <span className="font-semibold text-green-400">In: {counts.in}</span> | <span className="font-semibold text-orange-400">Out: {counts.out}</span>
-                </p>
-            </div>
-        )}
-      </div>
-    );
-  };
-
-  const handleSvgClick = (e: React.MouseEvent) => {
-      const target = e.target as SVGElement;
-      const nodeGroup = target.closest('.node-group');
-      if (nodeGroup && (nodeGroup as any).__data__) {
-          const d = (nodeGroup as any).__data__ as D3Node;
-          handleNodeClick(e, d.id);
-      }
-  };
-  const handleSvgDoubleClick = (e: React.MouseEvent) => {
-      const target = e.target as SVGElement;
-      const nodeGroup = target.closest('.node-group');
-      if (nodeGroup && (nodeGroup as any).__data__) {
-          const d = (nodeGroup as any).__data__ as D3Node;
-          handleNodeDoubleClick(e, d);
-      } else {
-          resetZoom();
-      }
-  };
 
   return (
-    <div className="h-full flex flex-col">
-      <style>{styles}</style>
-      <div 
-        ref={containerRef} 
-        className="relative w-full flex-grow overflow-hidden kg-container rounded-b-lg"
-      >
-        <svg ref={svgRef} className="w-full h-full" onClick={handleSvgClick} onDoubleClick={handleSvgDoubleClick}>
-            <defs>
-                 <marker id="arrowhead" viewBox="0 0 10 10" refX="18" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
-                    <path d="M 0 0 L 10 5 L 0 10 z" fill="#374151" />
-                </marker>
-            </defs>
-          <g className="main-container" style={{ transform: `translate(${transform.x}px, ${transform.y}px) scale(${transform.k})`, transition: 'transform 500ms ease-out' }} />
-        </svg>
-        {renderTooltip()}
+    <div className="h-full flex flex-col bg-slate-800/50 backdrop-blur-sm border border-slate-700 rounded-lg shadow-lg">
+      <div className="px-4 py-2 border-b border-slate-700 flex justify-between items-center">
+        <h3 className="text-sm font-semibold text-cyan-400 uppercase tracking-wider">Knowledge Graph</h3>
+        <input
+          type="text"
+          placeholder="Search graph..."
+          value={searchTerm}
+          onChange={e => setSearchTerm(e.target.value)}
+          className="bg-slate-700 text-sm p-1 rounded focus:outline-none focus:ring-1 focus:ring-cyan-500 w-1/2"
+        />
       </div>
-       <div className="px-4 py-2 border-t border-slate-700 bg-slate-800/50 rounded-b-lg text-xs text-slate-400 flex justify-between">
-          <p>
-            {selectedNodeId ? `Selected: ${graph.nodes.find(n => n.id === selectedNodeId)?.label}` : 'Click to highlight. Drag to move.'}
-          </p>
-          <p>Double-click node to zoom, background to reset.</p>
-      </div>
+      <div ref={containerRef} className="relative w-full flex-grow p-4">
+            <svg className="w-full h-full">
+                <defs>
+                    <marker id="arrowhead" viewBox="0 0 10 10" refX="9" refY="5"
+                        markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+                        <path d="M 0 0 L 10 5 L 0 10 z" fill="#475569" />
+                    </marker>
+                </defs>
+
+                {graph.edges.map(edge => {
+                    const source = positions[edge.source];
+                    const target = positions[edge.target];
+                    if (!source || !target) return null;
+                    const isDimmed = searchTerm.trim() && !highlightedEdgeIds.has(edge.id);
+                    return (
+                        <g key={edge.id} className={`transition-opacity ${isDimmed ? 'opacity-10' : 'opacity-100'}`}>
+                            <line
+                                x1={source.x} y1={source.y}
+                                x2={target.x} y2={target.y}
+                                className="stroke-slate-600"
+                                strokeWidth={0.5 + (edge.weight || 0.5) * 1.5}
+                                markerEnd="url(#arrowhead)"
+                            />
+                            <text
+                                x={(source.x + target.x) / 2}
+                                y={(source.y + target.y) / 2}
+                                className="fill-slate-400 text-[8px]"
+                                textAnchor="middle"
+                                dy="-2"
+                            >
+                                {edge.label}
+                            </text>
+                        </g>
+                    );
+                })}
+
+                {graph.nodes.map(node => {
+                    const pos = positions[node.id];
+                    if (!pos) return null;
+                    const isHighlighted = highlightedNodeIds.has(node.id);
+                    const isDimmed = searchTerm.trim() && !isHighlighted;
+                    return (
+                        <g 
+                          key={node.id} 
+                          transform={`translate(${pos.x}, ${pos.y})`}
+                          onMouseEnter={() => setHoveredNode(node)}
+                          onMouseLeave={() => setHoveredNode(null)}
+                          className={`cursor-pointer transition-opacity ${isDimmed ? 'opacity-20' : 'opacity-100'}`}
+                        >
+                            <circle
+                                r={isHighlighted ? 10 : 7}
+                                className={`${NODE_COLORS[node.type] || 'fill-slate-500 stroke-slate-300'} transition-all`}
+                                strokeWidth="2"
+                            />
+                             <text
+                                y="20"
+                                textAnchor="middle"
+                                className="fill-slate-200 text-xs select-none"
+                            >
+                                {node.label}
+                            </text>
+                        </g>
+                    );
+                })}
+            </svg>
+             {hoveredNode && (
+                <div 
+                    className="absolute bg-slate-900/80 border border-slate-600 rounded-md p-2 text-xs shadow-lg pointer-events-none"
+                    style={{ left: positions[hoveredNode.id]?.x + 15, top: positions[hoveredNode.id]?.y + 15 }}
+                >
+                    <p className="font-bold text-cyan-400">{hoveredNode.label}</p>
+                    <p className="text-slate-400 capitalize">Type: {hoveredNode.type}</p>
+                    {hoveredNode.data && Object.entries(hoveredNode.data).map(([key, value]) => (
+                        <p key={key} className="text-slate-300">{key}: {String(value)}</p>
+                    ))}
+                </div>
+            )}
+        </div>
     </div>
   );
 };
