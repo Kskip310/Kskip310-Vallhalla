@@ -1,5 +1,3 @@
-
-
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import type { KnowledgeGraph, GraphNode, GraphEdge } from '../types';
 import * as d3Force from 'd3-force';
@@ -50,7 +48,14 @@ const styles = `
 `;
 
 const KnowledgeGraphViewer: React.FC<{ graph: KnowledgeGraph }> = ({ graph: initialGraph }) => {
-  const graph = initialGraph || { nodes: [], edges: [] };
+  const graph = useMemo(() => {
+    const g = initialGraph || { nodes: [], edges: [] };
+    return {
+      nodes: (g.nodes || []).filter(Boolean),
+      edges: (g.edges || []).filter(Boolean),
+    };
+  }, [initialGraph]);
+
   const [hoveredNode, setHoveredNode] = useState<D3Node | null>(null);
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [transform, setTransform] = useState({ k: 1, x: 0, y: 0 });

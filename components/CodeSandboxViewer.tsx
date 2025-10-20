@@ -27,6 +27,15 @@ interface CodeSandboxViewerProps {
 const CodeSandboxViewer: React.FC<CodeSandboxViewerProps> = ({ sandboxState, onSaveOutput }) => {
   const [isSaving, setIsSaving] = useState(false);
   const [filename, setFilename] = useState(`/sandbox/output-${Date.now()}.txt`);
+
+  if (!sandboxState) {
+    return (
+        <div className="p-4 bg-slate-900/50 rounded-lg border border-red-500/50 text-red-300">
+            <h4 className="font-semibold">Sandbox State Error</h4>
+            <p className="text-xs">The code sandbox state is currently unavailable or corrupted. Please check the system logs.</p>
+        </div>
+    );
+  }
   
   const canSave = sandboxState.output && sandboxState.output.trim() !== 'Code has not been executed yet.' && sandboxState.output.trim() !== '';
 
