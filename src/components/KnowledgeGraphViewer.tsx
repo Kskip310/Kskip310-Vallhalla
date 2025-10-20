@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
-import type { KnowledgeGraph, GraphNode, GraphEdge } from '../types';
+import type { KnowledgeGraph, GraphNode } from '../types';
 import * as d3Force from 'd3-force';
 import { drag as d3Drag } from 'd3-drag';
 import { select as d3Select, Selection } from 'd3-selection';
@@ -197,7 +197,7 @@ const KnowledgeGraphViewer: React.FC<{ graph: KnowledgeGraph }> = ({ graph: init
       });
 
     nodeSelectionRef.current
-        .on('mouseenter', (event, d) => setHoveredNode(d))
+        .on('mouseenter', (_, d) => setHoveredNode(d))
         .on('mouseleave', () => setHoveredNode(null))
         .call(drag as any);
 

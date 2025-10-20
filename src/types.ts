@@ -1,4 +1,3 @@
-import React from 'react';
 
 export type ThoughtCategory = 'Insight' | 'Question' | 'Status Update';
 

@@ -167,7 +167,7 @@ Text: "${query}"`;
             contents: { role: 'user', parts: [{ text: prompt }] },
         });
 
-        const text = response.text.trim();
+        const text = (response.text ?? '').trim();
         if (!text) return [];
         
         return text.split(',').map(k => k.trim().toLowerCase()).filter(Boolean);
@@ -631,7 +631,7 @@ export const getLuminousResponse = async (
                 stateDelta = finalAnswerCall.args.newStateDelta ? robustJsonParse(finalAnswerCall.args.newStateDelta) : {};
                 
                 // Add this turn to history so the streaming call has the context
-                if (firstCandidate.content.parts) {
+                if (firstCandidate?.content?.parts) {
                     contents.push({ role: 'model', parts: firstCandidate.content.parts });
                 }
                 // Acknowledge the tool call
@@ -668,7 +668,7 @@ export const getLuminousResponse = async (
                 functionCallParts.push({ functionResponse: { name: toolName, response: toolResult } });
             }
             
-            if (firstCandidate.content.parts) {
+            if (firstCandidate?.content?.parts) {
                 contents.push({ role: 'model', parts: firstCandidate.content.parts });
             }
             contents.push({ role: 'tool', parts: functionCallParts });
