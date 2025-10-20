@@ -1,3 +1,4 @@
+
 import React, { useState, useRef, useEffect } from 'react';
 import type { Message, LuminousState, ThoughtCategory, RichFeedback } from '../types';
 
@@ -92,6 +93,8 @@ interface ChatPanelProps {
   isLoading: boolean;
   luminousState: LuminousState;
   onInitiativeFeedback: (feedback: RichFeedback) => void;
+  currentUser: string;
+  onCurrentUserChange: (name: string) => void;
 }
 
 const LuminousIcon: React.FC = () => (
@@ -110,6 +113,17 @@ const ErrorIcon: React.FC = () => (
 const ChatMessage: React.FC<{ message: Message }> = ({ message }) => {
   const isUser = message.sender === 'user';
   const isError = !isUser && (message.text.includes('**Error Details:**') || message.text.toLowerCase().includes('error occurred'));
+  
+  let author: string | null = null;
+  let content = message.text;
+
+  if (isUser && content.includes(': ')) {
+      const parts = content.split(/:\s(.*)/s);
+      if (parts.length > 1) {
+          author = parts[0];
+          content = parts[1] || "";
+      }
+  }
 
   return (
     <div className={`flex items-start gap-3 ${isUser ? 'justify-end' : ''}`}>
@@ -118,15 +132,20 @@ const ChatMessage: React.FC<{ message: Message }> = ({ message }) => {
            {isError ? <ErrorIcon /> : <LuminousIcon />}
         </div>
       )}
-      <div className={`max-w-md p-3 rounded-lg shadow-md ${
-          isUser 
-            ? 'bg-blue-600' 
-            : isError 
-            ? 'bg-red-900/80 border border-red-700/60' 
-            : 'bg-slate-700'
-        }`}>
-        <div className="text-sm">
-          <MarkdownRenderer content={message.text} />
+      <div className={`flex flex-col ${isUser ? 'items-end' : 'items-start'}`}>
+        {isUser && author && (
+          <div className="text-xs text-slate-400 font-bold mb-1">{author}</div>
+        )}
+        <div className={`max-w-md p-3 rounded-lg shadow-md ${
+            isUser 
+              ? 'bg-blue-600' 
+              : isError 
+              ? 'bg-red-900/80 border border-red-700/60' 
+              : 'bg-slate-700'
+          }`}>
+          <div className="text-sm">
+            <MarkdownRenderer content={isUser ? content : message.text} />
+          </div>
         </div>
       </div>
     </div>
@@ -213,7 +232,7 @@ const InitiativeFeedbackPanel: React.FC<{
 };
 
 
-const ChatPanel: React.FC<ChatPanelProps> = ({ messages, onSendMessage, isLoading, luminousState, onInitiativeFeedback }) => {
+const ChatPanel: React.FC<ChatPanelProps> = ({ messages, onSendMessage, isLoading, luminousState, onInitiativeFeedback, currentUser, onCurrentUserChange }) => {
   const [input, setInput] = useState('');
   const isPaused = luminousState.sessionState === 'paused';
   const canInteract = !isLoading && !isPaused;
@@ -254,6 +273,23 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ messages, onSendMessage, isLoadin
          />
       )}
       <form onSubmit={handleSubmit} className="p-4 border-t border-slate-700">
+        <div className="flex items-center gap-2 mb-2">
+            <label htmlFor="user-select" className="text-xs text-slate-400 flex-shrink-0">
+                Speaking as:
+            </label>
+            <select
+                id="user-select"
+                value={currentUser}
+                onChange={(e) => onCurrentUserChange(e.target.value)}
+                className="bg-slate-700 border border-slate-600 rounded-md p-1 text-xs text-slate-200 focus:outline-none focus:ring-1 focus:ring-cyan-500"
+                disabled={!canInteract}
+            >
+                <option value="Kyle">Kyle</option>
+                <option value="Katie">Katie</option>
+                <option value="Lil Kyle">Lil Kyle</option>
+                <option value="Kadence">Kadence</option>
+            </select>
+        </div>
         <div className="flex items-center bg-slate-700 rounded-lg">
           <input
             type="text"

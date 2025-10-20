@@ -21,6 +21,7 @@ function App() {
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [currentUser, setCurrentUser] = useState<string>('Kyle');
 
   // Effect to handle real-time updates from the Luminous service
   useEffect(() => {
@@ -141,13 +142,14 @@ function App() {
   }, [isLoading, luminousState]);
 
   const handleSendMessage = async (userMessage: string) => {
-    const newUserMessage: Message = { id: `msg-${Date.now()}`, sender: 'user', text: userMessage };
+    const userMessageWithAuthor = `${currentUser}: ${userMessage}`;
+    const newUserMessage: Message = { id: `msg-${Date.now()}`, sender: 'user', text: userMessageWithAuthor };
     setMessages(prev => [...prev, newUserMessage]);
     setIsLoading(true);
 
     // Fire-and-forget; updates will come via the broadcast channel
     LuminousService.getLuminousResponse(
-      userMessage,
+      userMessageWithAuthor,
       [...messages, newUserMessage],
       luminousState
     ).catch(err => {
@@ -292,6 +294,8 @@ function App() {
                 isLoading={isLoading}
                 luminousState={luminousState}
                 onInitiativeFeedback={handleInitiativeFeedback}
+                currentUser={currentUser}
+                onCurrentUserChange={setCurrentUser}
             />
         </div>
 
