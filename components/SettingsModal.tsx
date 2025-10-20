@@ -16,6 +16,8 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, onSave }
   const [githubRepo, setGithubRepo] = useState('');
   const [hfModelUrl, setHfModelUrl] = useState('');
   const [hfApiToken, setHfApiToken] = useState('');
+  const [shopifyStoreUrl, setShopifyStoreUrl] = useState('');
+  const [shopifyAdminToken, setShopifyAdminToken] = useState('');
 
   const keysToManage = {
     gemini: setGeminiApiKey,
@@ -27,6 +29,8 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, onSave }
     githubRepo: setGithubRepo,
     hfModelUrl: setHfModelUrl,
     hfApiToken: setHfApiToken,
+    shopifyStoreUrl: setShopifyStoreUrl,
+    shopifyAdminToken: setShopifyAdminToken,
   };
 
   const storageKeyMap: Record<string, string> = {
@@ -39,6 +43,8 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, onSave }
     githubRepo: 'LUMINOUS_GITHUB_REPO',
     hfModelUrl: 'LUMINOUS_HF_MODEL_URL',
     hfApiToken: 'LUMINOUS_HF_API_TOKEN',
+    shopifyStoreUrl: 'LUMINOUS_SHOPIFY_STORE_URL',
+    shopifyAdminToken: 'LUMINOUS_SHOPIFY_ADMIN_TOKEN',
   };
 
   useEffect(() => {
@@ -67,6 +73,8 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, onSave }
       githubRepo,
       hfModelUrl,
       hfApiToken,
+      shopifyStoreUrl,
+      shopifyAdminToken,
     };
     onSave(keysToSave);
   };
@@ -117,6 +125,12 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, onSave }
           <p className="text-xs text-slate-400 mb-2">Optional. If configured, this will be used instead of the Gemini API.</p>
           <InputField label="Model Inference Endpoint URL" value={hfModelUrl} onChange={(e) => setHfModelUrl(e.target.value)} placeholder="e.g., https://api-inference.huggingface.co/models/..." />
           <InputField label="Hugging Face API Token" value={hfApiToken} onChange={(e) => setHfApiToken(e.target.value)} placeholder="Your Hugging Face read token" type="password" />
+
+          <hr className="border-slate-700 my-4" />
+          <h3 className="text-md font-semibold text-purple-300">Shopify Integration</h3>
+          <p className="text-xs text-slate-400 mb-2">Provide credentials for a Custom App to give Luminous control over a Shopify store.</p>
+          <InputField label="Shopify Store URL" value={shopifyStoreUrl} onChange={(e) => setShopifyStoreUrl(e.target.value)} placeholder="your-store.myshopify.com" />
+          <InputField label="Shopify Admin API Access Token" value={shopifyAdminToken} onChange={(e) => setShopifyAdminToken(e.target.value)} placeholder="shpat_..." type="password" />
 
           <div className="bg-yellow-500/10 border border-yellow-500/30 text-yellow-300 text-xs rounded-md p-3 mt-2">
             <p><span className="font-bold">Security Warning:</span> Storing API keys in the browser is convenient but not recommended for production environments. Keys are stored in your browser's local storage. Ensure you are in a secure environment.</p>

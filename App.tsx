@@ -14,6 +14,7 @@ import SystemReportsViewer from './components/SystemReportsViewer';
 import EthicalCompassViewer from './components/EthicalCompassViewer';
 import SettingsModal from './components/SettingsModal';
 import IdentificationModal from './components/IdentificationModal';
+import ShopifyManager from './components/ShopifyManager';
 
 function App() {
   const [luminousState, setLuminousState] = useState<LuminousState>(LuminousService.createDefaultLuminousState());
@@ -232,6 +233,8 @@ function App() {
       githubRepo: 'Luminous_GITHUB_REPO',
       hfModelUrl: 'Luminous_HF_MODEL_URL',
       hfApiToken: 'Luminous_HF_API_TOKEN',
+      shopifyStoreUrl: 'LUMINOUS_SHOPIFY_STORE_URL',
+      shopifyAdminToken: 'LUMINOUS_SHOPIFY_ADMIN_TOKEN',
     };
     
     Object.entries(keys).forEach(([key, value]) => {
@@ -318,6 +321,7 @@ function App() {
            <Tabs
             tabs={[
               { label: 'System Logs', content: <LogViewer logs={logs} onFileUpload={handleFileUpload} onDownloadSnapshot={handleDownloadSnapshot} /> },
+              { label: 'Shopify', content: <ShopifyManager onOpenSettings={() => setIsSettingsOpen(true)} /> },
               { label: 'System Reports', content: <SystemReportsViewer /> },
               { label: 'Ethical Compass', content: <EthicalCompassViewer valueOntology={luminousState.valueOntology} intrinsicValue={luminousState.intrinsicValue} weights={luminousState.intrinsicValueWeights} /> },
               { label: 'Knowledge Graph', content: <KnowledgeGraphViewer graph={luminousState.knowledgeGraph} /> },

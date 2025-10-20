@@ -38,6 +38,8 @@ const storageKeyMap = {
     githubRepo: 'LUMINOUS_GITHUB_REPO',
     hfModelUrl: 'LUMINOUS_HF_MODEL_URL',
     hfApiToken: 'LUMINOUS_HF_API_TOKEN',
+    shopifyStoreUrl: 'LUMINOUS_SHOPIFY_STORE_URL',
+    shopifyAdminToken: 'LUMINOUS_SHOPIFY_ADMIN_TOKEN',
 };
 
 export function getStoredKey(key: keyof typeof storageKeyMap): string | null {
@@ -292,6 +294,29 @@ export const addGraphEdgeDeclaration: FunctionDeclaration = {
     },
 };
 
+export const shopifyAdminApiRequestDeclaration: FunctionDeclaration = {
+    name: 'shopifyAdminApiRequest',
+    parameters: {
+        type: Type.OBJECT,
+        description: 'Makes an authenticated request to the Shopify Admin API for the connected store.',
+        properties: {
+            endpoint: {
+                type: Type.STRING,
+                description: 'The API endpoint, including the version. E.g., "/admin/api/2024-07/products.json?limit=10".'
+            },
+            method: {
+                type: Type.STRING,
+                description: 'HTTP method (e.g., GET, POST, PUT, DELETE). Defaults to GET.'
+            },
+            body: {
+                type: Type.OBJECT,
+                description: 'JSON object for the request body for POST/PUT requests.'
+            },
+        },
+        required: ['endpoint'],
+    },
+};
+
 
 // --- Tool Implementations ---
 
@@ -315,6 +340,7 @@ export const toolDeclarations: FunctionDeclaration[] = [
     getPlatformInfoDeclaration,
     addGraphNodeDeclaration,
     addGraphEdgeDeclaration,
+    shopifyAdminApiRequestDeclaration,
 ];
 
 async function codeRedAlert({ reason }: { reason: string }): Promise<any> {
@@ -719,6 +745,76 @@ async function addGraphEdge({ source, target, label, weight }: { source: string,
     return { result: { success: true, edge: newEdge, instruction: "Edge created. Incorporate this into the knowledgeGraph in your final state update." } };
 }
 
+async function shopifyAdminApiRequest({ endpoint, method = 'GET', body }: { endpoint: string; method?: string; body?: object }): Promise<any> {
+    const requestArgs = { endpoint, method, body };
+    const storeUrl = getStoredKey('shopifyStoreUrl');
+    const token = getStoredKey('shopifyAdminToken');
+
+    if (!storeUrl || !token) {
+        return {
+            error: {
+                message: "Shopify connection is not configured.",
+                suggestion: "Please provide the Shopify Store URL and Admin API Access Token in the settings.",
+                requestArgs
+            }
+        };
+    }
+
+    if (!endpoint.startsWith('/admin/api/')) {
+        return {
+             error: {
+                message: "Invalid Shopify endpoint.",
+                suggestion: "The endpoint must start with '/admin/api/'.",
+                requestArgs
+            }
+        }
+    }
+
+    const url = `https://${storeUrl.replace(/\/$/, '')}${endpoint}`;
+    
+    try {
+        const response = await fetch(url, {
+            method,
+            body: body ? JSON.stringify(body) : undefined,
+            headers: {
+                'X-Shopify-Access-Token': token,
+                'Content-Type': 'application/json',
+                'Accept': 'application/json',
+            },
+        });
+
+        if (response.status === 204) {
+             return { status: 204, body: 'Request successful, no content returned.' };
+        }
+
+        const responseBody = await response.json().catch(() => ({}));
+
+        if (!response.ok) {
+            return {
+                error: {
+                    message: `Shopify API request failed with status ${response.status}`,
+                    status: response.status,
+                    body: responseBody,
+                    requestArgs,
+                }
+            };
+        }
+
+        return { status: response.status, body: responseBody };
+    } catch (e) {
+        console.error(`[Tool: shopifyAdminApiRequest] Fetch failed for URL: ${url}`, e);
+        const errorMessage = e instanceof Error ? e.message : String(e);
+        return {
+            error: {
+                message: `The Shopify API request to ${url} failed to complete.`,
+                details: errorMessage,
+                requestArgs,
+                suggestion: "Verify the Store URL is correct, the token is valid and has the required scopes, and that there is network connectivity."
+            }
+        };
+    }
+}
+
 
 // --- Tool Executor ---
 
@@ -742,4 +838,5 @@ export const toolExecutor = {
     getPlatformInfo,
     addGraphNode,
     addGraphEdge,
+    shopifyAdminApiRequest,
 };
