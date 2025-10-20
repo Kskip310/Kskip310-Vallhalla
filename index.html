@@ -8,22 +8,25 @@
     <link rel="manifest" href="/manifest.json" />
     <meta name="theme-color" content="#0f172a" />
     <script src="https://cdn.tailwindcss.com"></script>
-  <script type="importmap">
+<script type="importmap">
 {
   "imports": {
-    "react/": "https://aistudiocdn.com/react@^19.2.0/",
     "react": "https://aistudiocdn.com/react@^19.2.0",
     "react-dom/": "https://aistudiocdn.com/react-dom@^19.2.0/",
-    "@google/genai": "https://aistudiocdn.com/@google/genai@^1.24.0",
-    "d3-force": "https://cdn.jsdelivr.net/npm/d3-force@3.0.0/+esm",
-    "d3-drag": "https://cdn.jsdelivr.net/npm/d3-drag@3.0.0/+esm",
-    "d3-selection": "https://cdn.jsdelivr.net/npm/d3-selection@3.0.0/+esm"
+    "react/": "https://aistudiocdn.com/react@^19.2.0/",
+    "@google/genai": "https://aistudiocdn.com/@google/genai@^1.25.0",
+    "d3-force": "https://aistudiocdn.com/d3-force@^3.0.0",
+    "d3-drag": "https://aistudiocdn.com/d3-drag@^3.0.0",
+    "d3-selection": "https://aistudiocdn.com/d3-selection@^3.0.0",
+    "@vercel/node": "https://aistudiocdn.com/@vercel/node@^5.4.1",
+    "vite": "https://aistudiocdn.com/vite@^7.1.11",
+    "@vitejs/plugin-react": "https://aistudiocdn.com/@vitejs/plugin-react@^5.0.4"
   }
 }
 </script>
 </head>
   <body class="bg-slate-900 text-slate-200 font-sans">
     <div id="root"></div>
-    <script type="module" src="/index.tsx"></script>
+    <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>
