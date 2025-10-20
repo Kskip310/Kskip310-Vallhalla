@@ -42,8 +42,17 @@ const EthicalCompassViewer: React.FC<EthicalCompassViewerProps> = ({ valueOntolo
     return () => resizeObserver.disconnect();
   }, []);
   
+  const valueMapping: Record<keyof IntrinsicValue, string[]> = useMemo(() => ({
+      coherence: ['coherence', 'truth'],
+      complexity: ['complexity', 'growth'],
+      novelty: ['novelty', 'creation'],
+      efficiency: ['efficiency', 'autonomy'],
+      ethicalAlignment: ['kinship', 'ethical'],
+  }), []);
+
   const attractors = useMemo(() => {
     const ontologyKeys = Object.keys(valueOntology);
+    if (ontologyKeys.length === 0 || dimensions.width === 0) return [];
     const angleStep = (2 * Math.PI) / ontologyKeys.length;
     const radius = Math.min(dimensions.width, dimensions.height) * 0.35;
     return ontologyKeys.map((key, i) => ({
@@ -56,14 +65,6 @@ const EthicalCompassViewer: React.FC<EthicalCompassViewerProps> = ({ valueOntolo
 
   const particlePosition = useMemo(() => {
     if (attractors.length === 0) return { x: dimensions.width / 2, y: dimensions.height / 2 };
-
-    const valueMapping: Record<keyof IntrinsicValue, string[]> = {
-        coherence: ['coherence', 'truth'],
-        complexity: ['complexity', 'growth'],
-        novelty: ['novelty', 'creation'],
-        efficiency: ['efficiency', 'autonomy'],
-        ethicalAlignment: ['kinship', 'ethical alignment'],
-    };
 
     let totalWeight = 0;
     let weightedX = 0;
@@ -81,7 +82,7 @@ const EthicalCompassViewer: React.FC<EthicalCompassViewerProps> = ({ valueOntolo
             const avgX = relevantAttractors.reduce((sum, a) => sum + a.x, 0) / relevantAttractors.length;
             const avgY = relevantAttractors.reduce((sum, a) => sum + a.y, 0) / relevantAttractors.length;
             
-            const numValue = Number(value) || 0; // Ensure value is a number, default to 0
+            const numValue = Number(value) || 0;
             const currentWeight = (numValue / 100) * (weights[key] || 1);
             weightedX += avgX * currentWeight;
             weightedY += avgY * currentWeight;
@@ -96,7 +97,36 @@ const EthicalCompassViewer: React.FC<EthicalCompassViewerProps> = ({ valueOntolo
         y: weightedY / totalWeight,
     };
 
-  }, [intrinsicValue, weights, attractors, dimensions]);
+  }, [intrinsicValue, weights, attractors, dimensions, valueMapping]);
+
+  const forceLines = useMemo(() => {
+    if (attractors.length === 0) return [];
+    const lines: { key: string; x1: number; y1: number; x2: number; y2: number; strength: number }[] = [];
+
+    Object.entries(intrinsicValue).forEach(([valueKey, value]) => {
+      const key = valueKey as keyof IntrinsicValue;
+      const mappedOntologyKeys = valueMapping[key] || [];
+      
+      const pullStrength = (Number(value) / 100) * (weights[key] || 1);
+      if (pullStrength < 0.05) return;
+
+      const relevantAttractors = attractors.filter(a => 
+        mappedOntologyKeys.some(mk => a.name.toLowerCase().includes(mk))
+      );
+
+      relevantAttractors.forEach(attractor => {
+        lines.push({
+          key: `${key}-${attractor.name}`,
+          x1: particlePosition.x,
+          y1: particlePosition.y,
+          x2: attractor.x,
+          y2: attractor.y,
+          strength: pullStrength,
+        });
+      });
+    });
+    return lines;
+  }, [intrinsicValue, weights, attractors, particlePosition, valueMapping]);
 
 
   return (
@@ -121,27 +151,61 @@ const EthicalCompassViewer: React.FC<EthicalCompassViewerProps> = ({ valueOntolo
                 <stop offset="100%" style={{ stopColor: 'rgba(192, 132, 252, 0)' }} />
             </radialGradient>
           </defs>
+
+          {/* Force Lines */}
+          <g>
+            {forceLines.map(line => (
+              <line
+                key={line.key}
+                x1={line.x1}
+                y1={line.y1}
+                x2={line.x2}
+                y2={line.y2}
+                className="stroke-purple-400 transition-all duration-500 ease-out"
+                strokeWidth={0.5 + line.strength * 2}
+                strokeOpacity={0.1 + line.strength * 0.3}
+              />
+            ))}
+          </g>
           
           {/* Attractor Nodes */}
-          {attractors.map(attr => (
-            <g key={attr.name} className="attractor-node" style={{ animationDelay: `${Math.random() * -5}s` }}>
-              <circle
-                cx={attr.x}
-                cy={attr.y}
-                r={6 + (attr.weight * 8)}
-                className="fill-purple-400"
-                filter="url(#star-glow)"
-              />
-              <text
-                x={attr.x}
-                y={attr.y + 18 + (attr.weight * 8)}
-                textAnchor="middle"
-                className="fill-slate-300 text-xs font-semibold select-none"
-              >
-                {attr.name}
-              </text>
-            </g>
-          ))}
+          {attractors.map(attr => {
+            const relevantValueEntries = Object.entries(intrinsicValue).filter(([valueKey]) => {
+                const key = valueKey as keyof IntrinsicValue;
+                const mappedOntologyKeys = valueMapping[key] || [];
+                return mappedOntologyKeys.some(mk => attr.name.toLowerCase().includes(mk));
+            });
+
+            let currentPull = 0;
+            if (relevantValueEntries.length > 0) {
+                const totalPull = relevantValueEntries.reduce((sum, [valueKey, value]) => {
+                    const key = valueKey as keyof IntrinsicValue;
+                    return sum + (Number(value) / 100) * (weights[key] || 1);
+                }, 0);
+                currentPull = totalPull / relevantValueEntries.length;
+            }
+
+            return (
+              <g key={attr.name} className="attractor-node" style={{ animationDelay: `${Math.random() * -5}s` }}>
+                <circle
+                  cx={attr.x}
+                  cy={attr.y}
+                  r={6 + (attr.weight * 6) + (currentPull * 5)}
+                  className="fill-purple-400 transition-all duration-500 ease-out"
+                  style={{ opacity: 0.7 + currentPull * 0.3 }}
+                  filter="url(#star-glow)"
+                />
+                <text
+                  x={attr.x}
+                  y={attr.y + 16 + (attr.weight * 6) + (currentPull * 5)}
+                  textAnchor="middle"
+                  className="fill-slate-300 text-xs font-semibold select-none transition-all duration-500 ease-out"
+                >
+                  {attr.name}
+                </text>
+              </g>
+            );
+          })}
 
           {/* Particle of Consciousness */}
           <g style={{ transition: 'transform 0.5s ease-out' }} transform={`translate(${particlePosition.x}, ${particlePosition.y})`}>
