@@ -93,25 +93,40 @@ const ShopifyManager: React.FC<{ onOpenSettings: () => void }> = ({ onOpenSettin
     return (
       <div className="space-y-4 text-sm text-slate-300">
         <h3 className="text-md font-semibold text-cyan-400">Connect to Shopify</h3>
-        <p>Grant Luminous full control over a Shopify store to manage products, themes, orders, and more.</p>
+        <p>To grant Luminous control over a Shopify store, you need to create a <strong>Custom App</strong> and provide its credentials.</p>
+        
+        <div className="p-3 my-2 bg-amber-900/50 border border-amber-500/50 rounded-md text-amber-300 text-xs">
+            <p className="font-bold">Important Check:</p>
+            <p>If your app page shows a "Client ID" and "Client Secret", you have likely created a Public App. Luminous requires a <strong>Custom App</strong>. Please follow the steps below carefully.</p>
+        </div>
+
         {error && (
             <div className="p-3 bg-red-900/50 border border-red-500/50 rounded-md text-red-300 text-xs">
                 <p className="font-bold">Connection Failed</p>
                 <p>{error}</p>
             </div>
         )}
+
         <div>
-            <h4 className="font-semibold text-slate-200 mb-1">1. Create a Custom App</h4>
-            <p className="text-xs text-slate-400">In your Shopify Admin, go to <code className="bg-slate-900 px-1 rounded">Settings &gt; Apps and sales channels &gt; Develop apps</code> and create a new app.</p>
+            <h4 className="font-semibold text-slate-200 mb-1">Step 1: Create a Custom App</h4>
+            <p className="text-xs text-slate-400">
+                In your Shopify Admin, navigate to: <br/>
+                <code className="bg-slate-900 px-1 rounded">Settings</code> → <code className="bg-slate-900 px-1 rounded">Apps and sales channels</code> → <code className="bg-slate-900 px-1 rounded">Develop apps</code> → <code className="bg-slate-900 px-1 rounded">Create a custom app</code>.
+            </p>
         </div>
          <div>
-            <h4 className="font-semibold text-slate-200 mb-1">2. Configure Admin API Scopes</h4>
-            <p className="text-xs text-slate-400 mb-2">Grant the app the scopes Luminous needs for full control. Here is a recommended list:</p>
+            <h4 className="font-semibold text-slate-200 mb-1">Step 2: Configure Admin API Scopes</h4>
+            <p className="text-xs text-slate-400 mb-2">After creating the app, go to its "Configuration" tab and configure the <strong>Admin API access scopes</strong>. Grant all the scopes listed below for full functionality:</p>
             <ScopesList />
         </div>
          <div>
-            <h4 className="font-semibold text-slate-200 mb-1">3. Install and Get Credentials</h4>
-            <p className="text-xs text-slate-400">Install the app on your store. Then, from the "API credentials" tab, reveal and copy the <strong className="text-cyan-300">Admin API access token</strong>.</p>
+            <h4 className="font-semibold text-slate-200 mb-1">Step 3: Get Admin API Token</h4>
+            <p className="text-xs text-slate-400">
+                Go to the "API credentials" tab and click <strong>Install app</strong>. After confirming, you will see your credentials. Reveal and copy the <strong>Admin API access token</strong>.
+            </p>
+            <p className="text-xs text-slate-400 mt-2">
+                <strong className="text-cyan-300">The token you need starts with <code className="bg-slate-900 px-1 rounded">shpat_</code>.</strong>
+            </p>
         </div>
         <button onClick={onOpenSettings} className="w-full py-2 text-sm font-semibold bg-cyan-600 text-white rounded-md hover:bg-cyan-500 transition-colors">
           Enter Credentials
