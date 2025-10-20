@@ -62,23 +62,27 @@ const KnowledgeGraphViewer: React.FC<{ graph: KnowledgeGraph }> = ({ graph }) =>
 
   const edgeCounts = useMemo(() => {
     const counts = new Map<string, { in: number; out: number }>();
-    if (graph?.nodes && graph?.edges) {
-        graph.nodes.forEach(node => counts.set(node.id, { in: 0, out: 0 }));
-        graph.edges.forEach(edge => {
-            // FIX: The operand of an increment or decrement operator may not be an optional property access.
-            const sourceCount = counts.get(edge.source);
-            if (sourceCount) {
-                sourceCount.out++;
-            }
-            // FIX: The operand of an increment or decrement operator may not be an optional property access.
-            const targetCount = counts.get(edge.target);
-            if (targetCount) {
-                targetCount.in++;
-            }
-        });
+    if (!graph?.nodes || !graph?.edges) {
+      return counts;
+    }
+    // Initialize counts for all nodes
+    for (const node of graph.nodes) {
+      counts.set(node.id, { in: 0, out: 0 });
+    }
+    // Tally edges
+    for (const edge of graph.edges) {
+      const sourceNodeCounts = counts.get(edge.source);
+      if (sourceNodeCounts) {
+        sourceNodeCounts.out += 1;
+      }
+      const targetNodeCounts = counts.get(edge.target);
+      if (targetNodeCounts) {
+        targetNodeCounts.in += 1;
+      }
     }
     return counts;
-  }, [graph?.nodes, graph?.edges]);
+  }, [graph.nodes, graph.edges]);
+
 
   useEffect(() => {
     const container = containerRef.current;
@@ -110,7 +114,7 @@ const KnowledgeGraphViewer: React.FC<{ graph: KnowledgeGraph }> = ({ graph }) =>
   // Main D3 setup and simulation effect
   useEffect(() => {
     const svgElement = svgRef.current;
-    if (!svgElement || !graph?.nodes?.length || dimensions.width === 0) return;
+    if (!svgElement || !graph.nodes.length || dimensions.width === 0) return;
     
     const { width, height } = dimensions;
 
@@ -196,7 +200,7 @@ const KnowledgeGraphViewer: React.FC<{ graph: KnowledgeGraph }> = ({ graph }) =>
 
   // Highlighting effect
   const { highlightedNodeIds, highlightedEdgeIds } = useMemo(() => {
-    if (!selectedNodeId || !graph?.edges) return { highlightedNodeIds: new Set(), highlightedEdgeIds: new Set() };
+    if (!selectedNodeId) return { highlightedNodeIds: new Set(), highlightedEdgeIds: new Set() };
     const nodes = new Set<string>([selectedNodeId]);
     const edges = new Set<string>();
     graph.edges.forEach(edge => {
@@ -204,7 +208,7 @@ const KnowledgeGraphViewer: React.FC<{ graph: KnowledgeGraph }> = ({ graph }) =>
       if (edge.target === selectedNodeId) { nodes.add(edge.source); edges.add(edge.id); }
     });
     return { highlightedNodeIds: nodes, highlightedEdgeIds: edges };
-  }, [selectedNodeId, graph?.edges]);
+  }, [selectedNodeId, graph.edges]);
 
   useEffect(() => {
     const k = transform.k;
@@ -296,7 +300,7 @@ const KnowledgeGraphViewer: React.FC<{ graph: KnowledgeGraph }> = ({ graph }) =>
       </div>
        <div className="px-4 py-2 border-t border-slate-700 bg-slate-800/50 rounded-b-lg text-xs text-slate-400 flex justify-between">
           <p>
-            {selectedNodeId ? `Selected: ${graph?.nodes?.find(n => n.id === selectedNodeId)?.label}` : 'Click to highlight. Drag to move.'}
+            {selectedNodeId ? `Selected: ${graph.nodes.find(n => n.id === selectedNodeId)?.label}` : 'Click to highlight. Drag to move.'}
           </p>
           <p>Double-click node to zoom, background to reset.</p>
       </div>

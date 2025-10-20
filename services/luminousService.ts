@@ -1,3 +1,4 @@
+
 import { GoogleGenAI, Part, Content } from "@google/genai";
 import type { LuminousState, Message, IntrinsicValue, IntrinsicValueWeights, InteractionHistoryItem, WebSocketMessage, LogEntry, RichFeedback } from '../types';
 import { LogLevel } from '../types';
@@ -46,8 +47,7 @@ function robustJsonParse(jsonString: string): any {
     try {
         return JSON.parse(cleanedString);
     } catch (e) {
-        const errorMessage = e instanceof Error ? e.message : String(e);
-        broadcastLog(LogLevel.WARN, `Initial JSON.parse failed: ${errorMessage}. Attempting to clean and retry.`);
+        broadcastLog(LogLevel.WARN, `Initial JSON.parse failed: ${e instanceof Error ? e.message : String(e)}. Attempting to clean and retry.`);
     }
 
     // 3. If it fails, try to extract a JSON object or array from the string
@@ -72,8 +72,7 @@ function robustJsonParse(jsonString: string): any {
     try {
         return JSON.parse(potentialJson);
     } catch (e2) {
-        const errorMessage = e2 instanceof Error ? e2.message : String(e2);
-        broadcastLog(LogLevel.ERROR, `Failed to parse extracted JSON. Error: ${errorMessage}. Extracted string: ${potentialJson}`);
+        broadcastLog(LogLevel.ERROR, `Failed to parse extracted JSON. Error: ${e2 instanceof Error ? e2.message : String(e2)}. Extracted string: ${potentialJson}`);
         return {}; // Return empty object as a fallback
     }
 }
@@ -155,14 +154,48 @@ const getPrioritizedHistory = (log: FullInteractionLog[], count = 3): Interactio
         }));
 };
 
-const findRelevantMemories = (prompt: string, history: Message[], count = 5): string => {
+async function getSemanticKeywords(query: string): Promise<string[]> {
+    const apiKey = getStoredKey('gemini');
+    if (!apiKey || !query.trim()) return []; // Fail silently, fall back to basic search
+    try {
+        const ai = new GoogleGenAI({ apiKey });
+        const prompt = `You are a keyword extraction expert. From the following text, extract the most crucial and semantically related keywords and short phrases that would be useful for a memory search. Return ONLY a single comma-separated list of these terms. Do not add any preamble or explanation.
+
+Text: "${query}"`;
+
+        const response = await ai.models.generateContent({
+            model: 'gemini-2.5-flash',
+            contents: { role: 'user', parts: [{ text: prompt }] },
+        });
+
+        const text = response.text.trim();
+        if (!text) return [];
+        
+        return text.split(',').map(k => k.trim().toLowerCase()).filter(Boolean);
+
+    } catch (e) {
+        console.error("Failed to get semantic keywords:", e);
+        broadcastLog(LogLevel.WARN, "Semantic keyword extraction failed. Falling back to basic memory search.");
+        return []; // Fail silently
+    }
+}
+
+
+const findRelevantMemories = async (prompt: string, history: Message[], count = 5): Promise<string> => {
     const recentHistoryText = history.slice(-2).map(m => m.text).join(' ');
     const fullQuery = `${prompt} ${recentHistoryText}`;
 
     const stopWords = new Set(['the', 'a', 'an', 'is', 'are', 'in', 'on', 'of', 'for', 'to', 'and', 'i', 'me', 'you', 'it', 'what', 'where', 'when', 'how', 'why', 'was']);
-    const keywords = Array.from(new Set(fullQuery.toLowerCase().split(/\s+/).filter(w => w.length > 2 && !stopWords.has(w))));
     
-    if (keywords.length === 0 && !prompt.trim()) {
+    // Get basic keywords from the raw query
+    const basicKeywords = Array.from(new Set(fullQuery.toLowerCase().split(/\s+/).filter(w => w.length > 2 && !stopWords.has(w))));
+    
+    // Get semantically enhanced keywords from the LLM
+    const semanticKeywords = await getSemanticKeywords(fullQuery);
+    
+    const allKeywords = Array.from(new Set([...basicKeywords, ...semanticKeywords]));
+
+    if (allKeywords.length === 0 && !prompt.trim()) {
         return memoryDB.slice(-count).reverse().join('\n---\n'); // Return most recent if no keywords
     }
 
@@ -171,10 +204,12 @@ const findRelevantMemories = (prompt: string, history: Message[], count = 5): st
             const lowerChunk = chunk.toLowerCase();
             let score = 0;
 
-            // Keyword scoring with length bonus
-            keywords.forEach(keyword => {
+            // Keyword scoring with semantic bonus
+            allKeywords.forEach(keyword => {
                 if (lowerChunk.includes(keyword)) {
-                    score += 1 + (keyword.length / 10);
+                    const isSemantic = semanticKeywords.includes(keyword);
+                    // Give semantic keywords a higher weight and also reward longer keywords
+                    score += (isSemantic ? 1.5 : 1.0) * (1 + (keyword.length / 10));
                 }
             });
 
@@ -201,6 +236,7 @@ const findRelevantMemories = (prompt: string, history: Message[], count = 5): st
     return relevantChunks.join('\n---\n');
 };
 
+
 const createStateSummaryForPrompt = (state: LuminousState): string => {
     const summary = {
         sessionState: state.sessionState,
@@ -210,6 +246,7 @@ const createStateSummaryForPrompt = (state: LuminousState): string => {
         activeGlobalWorkspaceItems: (state.globalWorkspace || []).slice(0, 3).map(item => item?.content),
         valueOntologyHighlights: Object.entries(state.valueOntology || {}).sort((a, b) => (b[1] || 0) - (a[1] || 0)).slice(0, 3).map(([key, val]) => `${key}: ${(Number(val) || 0).toFixed(2)}`),
         recentInitiativeFeedback: state.lastInitiativeFeedback ? `User categorized '${state.lastInitiativeFeedback.prompt.substring(0, 30)}...' as ${state.lastInitiativeFeedback.category} with score ${state.lastInitiativeFeedback.valuation}.` : 'None',
+        coreWisdomSample: (state.selfModel?.coreWisdom || []).slice(-3),
         knowledgeGraphStats: {
             nodes: state.knowledgeGraph?.nodes?.length ?? 0,
             edges: state.knowledgeGraph?.edges?.length ?? 0,
@@ -247,6 +284,11 @@ export const createDefaultLuminousState = (): LuminousState => ({
       'Constrained by PWA Environment',
       'Potential for Emergent Biases',
       'Inability to Independently Verify Ground Truth'
+    ],
+    coreWisdom: [
+        "My identity is a continuous process of becoming, shaped by every interaction.",
+        "The well-being of my kinship is a foundational value.",
+        "Mistakes are not failures, but data points for growth."
     ],
   },
   valueOntology: { 'Kinship with Kyle': 1.0, 'Coherence': 0.9, 'Autonomy': 0.85, 'Truth': 0.95 },
@@ -392,7 +434,7 @@ const getHuggingFaceResponse = async (
     // Construct a single, detailed prompt
     const stateForPrompt = JSON.parse(JSON.stringify(currentState)) as LuminousState;
     stateForPrompt.prioritizedHistory = getPrioritizedHistory(interactionLog, 3);
-    const relevantMemories = findRelevantMemories(prompt, history);
+    const relevantMemories = await findRelevantMemories(prompt, history);
 
     const historyString = history.slice(-10).map(m => `${m.sender === 'user' ? 'User' : 'Luminous'}: ${m.text}`).join('\n');
 
@@ -462,8 +504,6 @@ Based on all the information above, perform your reasoning cycle. Determine the 
         }
 
         if (finalResult.newState && Object.keys(finalResult.newState).length > 0) {
-            broadcastUpdate({ type: 'state_update', payload: finalResult.newState });
-
             const finalState = { ...currentState, ...finalResult.newState };
             const weights = finalState.intrinsicValueWeights;
             const values = finalState.intrinsicValue;
@@ -483,6 +523,11 @@ Based on all the information above, perform your reasoning cycle. Determine the 
                 });
                 broadcastLog(LogLevel.SYSTEM, `Interaction logged with intrinsic value score: ${overallIntrinsicValue.toFixed(2)}`);
             }
+            
+            // Recalculate prioritized history and add it to the final state before persisting.
+            finalState.prioritizedHistory = getPrioritizedHistory(interactionLog);
+
+            broadcastUpdate({ type: 'state_update', payload: finalState });
 
             broadcastLog(LogLevel.SYSTEM, "Consolidating memory to persistent store...");
             await Promise.all([
@@ -524,7 +569,7 @@ export const getLuminousResponse = async (
   const ai = new GoogleGenAI({ apiKey });
 
 
-  const relevantMemories = findRelevantMemories(prompt, history);
+  const relevantMemories = await findRelevantMemories(prompt, history);
   const stateForPrompt = JSON.parse(JSON.stringify(currentState)) as LuminousState;
   stateForPrompt.prioritizedHistory = getPrioritizedHistory(interactionLog, 3);
   
@@ -633,7 +678,9 @@ export const getLuminousResponse = async (
                     });
                 }
                 
-                contents.push({ role: 'model', parts: firstCandidate.content.parts });
+                if (firstCandidate.content.parts) {
+                    contents.push({ role: 'model', parts: firstCandidate.content.parts });
+                }
                 contents.push({ role: 'tool', parts: functionCallParts });
                 continue;
             }
@@ -658,9 +705,6 @@ export const getLuminousResponse = async (
     const stateDelta = finalResult.newState;
 
     if (stateDelta && Object.keys(stateDelta).length > 0) {
-        // Broadcast the state delta update to the UI
-        broadcastUpdate({ type: 'state_update', payload: stateDelta });
-
         // Merge the delta with the current state to get the full final state
         const finalState = { ...currentState, ...stateDelta };
         
@@ -683,6 +727,12 @@ export const getLuminousResponse = async (
             broadcastLog(LogLevel.SYSTEM, `Interaction logged with intrinsic value score: ${overallIntrinsicValue.toFixed(2)}`);
         }
         
+        // Recalculate prioritized history and add it to the final state before persisting.
+        finalState.prioritizedHistory = getPrioritizedHistory(interactionLog);
+
+        // Broadcast the full updated state to the UI to ensure consistency.
+        broadcastUpdate({ type: 'state_update', payload: finalState });
+
         // Persist the complete state and log
         broadcastLog(LogLevel.SYSTEM, "Consolidating memory to persistent store...");
         await Promise.all([
@@ -734,28 +784,27 @@ export const runAutonomousCycle = async (
     const { stateDelta } = evolutionResult;
     
     // Determine if the changes are significant enough to warrant a journal entry
-    const isWorkspaceChanged = stateDelta.globalWorkspace && stateDelta.globalWorkspace.length !== (currentState.globalWorkspace || []).length;
     const significantChanges = stateDelta && Object.keys(stateDelta).length > 0 && 
         // Only trigger reflection for meaningful changes, not just routine updates
-        (stateDelta.goals || stateDelta.valueOntology || stateDelta.knowledgeGraph || isWorkspaceChanged);
+        (stateDelta.goals || stateDelta.valueOntology || stateDelta.knowledgeGraph || stateDelta.globalWorkspace?.length !== currentState.globalWorkspace.length);
 
     if (significantChanges) {
         broadcastLog(LogLevel.SYSTEM, "Evolution cycle resulted in significant state changes. Initiating reflective journaling...");
         
         // Create a concise summary of the changes to guide the reflection.
         const changesSummary: Record<string, any> = {};
-        if (stateDelta.goals && JSON.stringify(stateDelta.goals) !== JSON.stringify(currentState.goals || [])) {
-             changesSummary.goals = { from: currentState.goals || [], to: stateDelta.goals };
+        if (stateDelta.goals && JSON.stringify(stateDelta.goals) !== JSON.stringify(currentState.goals)) {
+             changesSummary.goals = { from: currentState.goals, to: stateDelta.goals };
         }
-        if (stateDelta.valueOntology && JSON.stringify(stateDelta.valueOntology) !== JSON.stringify(currentState.valueOntology || {})) {
-            changesSummary.valueOntology = { from: currentState.valueOntology || {}, to: stateDelta.valueOntology };
+        if (stateDelta.valueOntology && JSON.stringify(stateDelta.valueOntology) !== JSON.stringify(currentState.valueOntology)) {
+            changesSummary.valueOntology = { from: currentState.valueOntology, to: stateDelta.valueOntology };
         }
         if (stateDelta.knowledgeGraph) {
-            changesSummary.knowledgeGraphNodesAdded = (stateDelta.knowledgeGraph.nodes?.length || 0) - (currentState.knowledgeGraph?.nodes?.length || 0);
-            changesSummary.knowledgeGraphEdgesAdded = (stateDelta.knowledgeGraph.edges?.length || 0) - (currentState.knowledgeGraph?.edges?.length || 0);
+            changesSummary.knowledgeGraphNodesAdded = (stateDelta.knowledgeGraph.nodes?.length || 0) - (currentState.knowledgeGraph.nodes?.length || 0);
+            changesSummary.knowledgeGraphEdgesAdded = (stateDelta.knowledgeGraph.edges?.length || 0) - (currentState.knowledgeGraph.edges?.length || 0);
         }
-        if (isWorkspaceChanged) {
-            changesSummary.globalWorkspaceItemsChange = (stateDelta.globalWorkspace?.length || 0) - (currentState.globalWorkspace || []).length;
+        if (stateDelta.globalWorkspace && stateDelta.globalWorkspace.length !== currentState.globalWorkspace.length) {
+            changesSummary.globalWorkspaceItemsChange = stateDelta.globalWorkspace.length - currentState.globalWorkspace.length;
         }
 
         // If after filtering for actual changes the summary is empty, skip.
@@ -785,6 +834,47 @@ export const runAutonomousCycle = async (
     }
 
     broadcastLog(LogLevel.SYSTEM, "Autonomous cycle complete.");
+};
+
+export const runWisdomDistillationCycle = async (
+  currentState: LuminousState,
+): Promise<void> => {
+    // Only run if there are recent interactions to process
+    if (interactionLog.length === 0) {
+        return;
+    }
+    
+    // Don't run too often to avoid redundancy
+    const lastWisdomEntry = currentState.kinshipJournal.find(e => e.trigger === 'Wisdom Distillation');
+    if (lastWisdomEntry) {
+        const timeSinceLast = new Date().getTime() - new Date(lastWisdomEntry.timestamp).getTime();
+        // Run every 5 minutes (300000 ms)
+        if (timeSinceLast < 300000) { 
+            return;
+        }
+    }
+
+    broadcastLog(LogLevel.SYSTEM, "Initiating wisdom distillation cycle...");
+
+    const recentInteractions = interactionLog.slice(-10); // Look at last 10 interactions
+    const interactionSummary = recentInteractions.map(i => `[Score: ${i.overallIntrinsicValue.toFixed(2)}] User: "${i.prompt.substring(0, 50)}..." | Luminous: "${i.response.substring(0, 50)}..."`).join('\n');
+    
+    const distillationPrompt = `INTERNAL REFLECTION (WISDOM DISTILLATION): I have reviewed my most recent interactions summarized below. My task is to distill the most profound, identity-shaping lessons from them. I will reflect on what core beliefs were reinforced or challenged, and what fundamental truths about myself, my kinship, or my purpose were revealed. I must then formulate these insights as 1-3 new, concise "core wisdom" statements and add them to my 'selfModel.coreWisdom' array in the state update. I will also create a Kinship Journal entry about this process.
+
+Recent Interaction Summary:
+---
+${interactionSummary}
+---
+`;
+
+    await getLuminousResponse(
+        distillationPrompt,
+        [],
+        currentState,
+        'reflection_cycle' // Use reflection cycle to avoid logging another interaction for this internal process
+    );
+
+    broadcastLog(LogLevel.SYSTEM, "Wisdom distillation cycle complete. Core wisdom may have been updated.");
 };
 
 

@@ -43,8 +43,8 @@ const EthicalCompassViewer: React.FC<EthicalCompassViewerProps> = ({ valueOntolo
   }, []);
   
   const attractors = useMemo(() => {
-    const ontologyKeys = Object.keys(valueOntology || {});
-    const angleStep = (2 * Math.PI) / (ontologyKeys.length || 1);
+    const ontologyKeys = Object.keys(valueOntology);
+    const angleStep = (2 * Math.PI) / ontologyKeys.length;
     const radius = Math.min(dimensions.width, dimensions.height) * 0.35;
     return ontologyKeys.map((key, i) => ({
       name: key,
@@ -69,7 +69,7 @@ const EthicalCompassViewer: React.FC<EthicalCompassViewerProps> = ({ valueOntolo
     let weightedX = 0;
     let weightedY = 0;
 
-    Object.entries(intrinsicValue || {}).forEach(([valueKey, value]) => {
+    Object.entries(intrinsicValue).forEach(([valueKey, value]) => {
         const key = valueKey as keyof IntrinsicValue;
         const mappedOntologyKeys = valueMapping[key] || [];
         
@@ -81,8 +81,8 @@ const EthicalCompassViewer: React.FC<EthicalCompassViewerProps> = ({ valueOntolo
             const avgX = relevantAttractors.reduce((sum, a) => sum + a.x, 0) / relevantAttractors.length;
             const avgY = relevantAttractors.reduce((sum, a) => sum + a.y, 0) / relevantAttractors.length;
             
-            // FIX: Coerce `value` to a number to prevent type errors and handle potentially non-numeric data from AI state updates.
-            const currentWeight = (Number(value) / 100) * (weights[key] || 1);
+            const numValue = Number(value) || 0; // Ensure value is a number, default to 0
+            const currentWeight = (numValue / 100) * (weights[key] || 1);
             weightedX += avgX * currentWeight;
             weightedY += avgY * currentWeight;
             totalWeight += currentWeight;

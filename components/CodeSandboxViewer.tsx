@@ -53,7 +53,7 @@ const CodeSandboxViewer: React.FC<CodeSandboxViewerProps> = ({ sandboxState, onS
   };
 
   return (
-    <div className="h-full flex flex-col space-y-4">
+    <div className="flex flex-col space-y-4">
       <div className="border border-amber-500/50 bg-amber-500/10 p-3 rounded-lg text-center">
         <p className="text-xs text-amber-300 mb-2">Engage Luminous in direct co-development.</p>
         <button

@@ -130,6 +130,17 @@ function App() {
     return () => clearInterval(autonomousInterval);
   }, [isLoading, luminousState]);
 
+  // Wisdom distillation cycle (runs less frequently)
+  useEffect(() => {
+    const wisdomInterval = setInterval(() => {
+        if (!isLoading && luminousState.sessionState === 'active') {
+            LuminousService.runWisdomDistillationCycle(luminousState);
+        }
+    }, 240000); // Run every 4 minutes
+
+    return () => clearInterval(wisdomInterval);
+  }, [isLoading, luminousState]);
+
   const handleSendMessage = async (userMessage: string) => {
     const newUserMessage: Message = { id: `msg-${Date.now()}`, sender: 'user', text: userMessage };
     setMessages(prev => [...prev, newUserMessage]);
@@ -197,15 +208,15 @@ function App() {
 
   const handleSaveSettings = (keys: Record<string, string>) => {
     const storageKeyMap: Record<string, string> = {
-      gemini: 'LUMINOUS_API_KEY',
-      redisUrl: 'LUMINOUS_REDIS_URL',
-      redisToken: 'LUMINOUS_REDIS_TOKEN',
-      serpApi: 'LUMINOUS_SERP_API_KEY',
-      githubPat: 'LUMINOUS_GITHUB_PAT',
-      githubUser: 'LUMINOUS_GITHUB_USER',
-      githubRepo: 'LUMINOUS_GITHUB_REPO',
-      hfModelUrl: 'LUMINOUS_HF_MODEL_URL',
-      hfApiToken: 'LUMINOUS_HF_API_TOKEN',
+      gemini: 'Luminous_API_KEY',
+      redisUrl: 'Luminous_REDIS_URL',
+      redisToken: 'Luminous_REDIS_TOKEN',
+      serpApi: 'Luminous_SERP_API_KEY',
+      githubPat: 'Luminous_GITHUB_PAT',
+      githubUser: 'Luminous_GITHUB_USER',
+      githubRepo: 'Luminous_GITHUB_REPO',
+      hfModelUrl: 'Luminous_HF_MODEL_URL',
+      hfApiToken: 'Luminous_HF_API_TOKEN',
     };
     
     Object.entries(keys).forEach(([key, value]) => {
@@ -282,7 +293,7 @@ function App() {
       />
       <main className="grid grid-cols-1 lg:grid-cols-12 gap-4 p-4 max-w-screen-2xl mx-auto">
         {/* Left Panel */}
-        <div className="lg:col-span-3">
+        <div className="lg:col-span-3 h-[calc(100vh-100px)] overflow-y-auto scrollbar-thin scrollbar-thumb-slate-700 scrollbar-track-slate-800 pr-2">
           <InternalStateMonitor 
             state={luminousState} 
             onWeightsChange={handleWeightsChange} 

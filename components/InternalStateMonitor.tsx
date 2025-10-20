@@ -127,6 +127,18 @@ const InternalStateMonitor: React.FC<InternalStateMonitorProps> = ({ state, onWe
         </div>
       </Card>
 
+      <Card title="Core Wisdom">
+        <ul className="space-y-2 text-sm text-slate-300 list-inside max-h-40 overflow-y-auto scrollbar-thin scrollbar-thumb-slate-700 scrollbar-track-slate-800">
+          {(state.selfModel.coreWisdom || []).map((wisdom, index) => (
+            <li key={index} className="flex items-start">
+              <span className="text-cyan-400 mr-2 mt-1">✧</span>
+              <span className="flex-1 italic">"{wisdom}"</span>
+            </li>
+          ))}
+          {(!state.selfModel.coreWisdom || state.selfModel.coreWisdom.length === 0) && <p className="text-xs text-slate-400">No core wisdom distilled yet.</p>}
+        </ul>
+      </Card>
+
        <Card title="Prioritized Interaction History">
         <div className="space-y-2 max-h-48 overflow-y-auto scrollbar-thin scrollbar-thumb-slate-700 scrollbar-track-slate-800 pr-2">
           {state.prioritizedHistory.length === 0 ? (

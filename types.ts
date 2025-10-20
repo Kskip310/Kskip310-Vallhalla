@@ -140,6 +140,7 @@ export interface LuminousState {
   selfModel: {
     capabilities: string[];
     limitations: string[];
+    coreWisdom: string[];
   };
   valueOntology: ValueOntology;
   goals: Goal[];
