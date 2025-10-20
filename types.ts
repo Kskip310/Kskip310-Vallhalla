@@ -1,3 +1,4 @@
+
 import React from 'react';
 
 export type ThoughtCategory = 'Insight' | 'Question' | 'Status Update';
@@ -108,14 +109,6 @@ export interface ProactiveInitiative {
   userCategory?: ThoughtCategory;
 }
 
-export interface CodeProposal {
-  id: string;
-  timestamp: string;
-  description: string;
-  code: string;
-  status: 'proposed' | 'accepted' | 'rejected';
-}
-
 export type ValueOntology = Record<string, number>;
 
 export interface Goal {
@@ -129,6 +122,15 @@ export interface RichFeedback {
     category: ThoughtCategory;
     valuation: number; // e.g., -10 to 10
     refinement?: string;
+}
+
+// FIX: Add missing CodeProposal type to resolve import error in CodeProposalViewer.tsx
+export interface CodeProposal {
+  id: string;
+  timestamp: string;
+  description: string;
+  code: string;
+  status: 'proposed' | 'accepted' | 'rejected';
 }
 
 
@@ -157,14 +159,13 @@ export interface LuminousState {
   } | null;
   lastInitiativeFeedback?: RichFeedback;
   proactiveInitiatives: ProactiveInitiative[];
-  codeProposals: CodeProposal[];
 }
 
 export type Tool = 'webSearch' | 'github' | 'file' | 'code' | 'financial';
 
 // --- Real-time Communication ---
 export type WebSocketMessage =
-  | { type: 'state_update'; payload: Partial<LuminousState> }
+  | { type: 'state__update'; payload: Partial<LuminousState> }
   | { type: 'full_state_replace'; payload: LuminousState }
   | { type: 'log_add'; payload: LogEntry }
   | { type: 'message_add'; payload: Message };

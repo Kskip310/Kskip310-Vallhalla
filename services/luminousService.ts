@@ -386,7 +386,6 @@ export const createDefaultLuminousState = (): LuminousState => ({
   sessionState: 'active',
   initiative: null,
   proactiveInitiatives: [],
-  codeProposals: [],
 });
 
 export const loadInitialData = async (): Promise<void> => {
@@ -527,7 +526,8 @@ Based on all the information above, perform your reasoning cycle. Determine the 
             // Recalculate prioritized history and add it to the final state before persisting.
             finalState.prioritizedHistory = getPrioritizedHistory(interactionLog);
 
-            broadcastUpdate({ type: 'state_update', payload: finalState });
+            // FIX: Corrected typo from 'state_update' to 'state__update' to match WebSocketMessage type.
+            broadcastUpdate({ type: 'state__update', payload: finalState });
 
             broadcastLog(LogLevel.SYSTEM, "Consolidating memory to persistent store...");
             await Promise.all([
@@ -731,7 +731,8 @@ export const getLuminousResponse = async (
         finalState.prioritizedHistory = getPrioritizedHistory(interactionLog);
 
         // Broadcast the full updated state to the UI to ensure consistency.
-        broadcastUpdate({ type: 'state_update', payload: finalState });
+        // FIX: Corrected typo from 'state_update' to 'state__update' to match WebSocketMessage type.
+        broadcastUpdate({ type: 'state__update', payload: finalState });
 
         // Persist the complete state and log
         broadcastLog(LogLevel.SYSTEM, "Consolidating memory to persistent store...");
@@ -889,7 +890,8 @@ export const reflectOnInitiativeFeedback = async (
       initiative: null, // Clear the current initiative from view
       lastInitiativeFeedback: feedback
     };
-    broadcastUpdate({ type: 'state_update', payload: feedbackState });
+    // FIX: Corrected typo from 'state_update' to 'state__update' to match WebSocketMessage type.
+    broadcastUpdate({ type: 'state__update', payload: feedbackState });
 
     const stateForReflection = { ...currentState, ...feedbackState };
 

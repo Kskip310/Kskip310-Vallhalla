@@ -1,5 +1,5 @@
 import { FunctionDeclaration, Type } from '@google/genai';
-import type { NodeType, CodeProposal } from '../types';
+import type { NodeType } from '../types';
 
 // --- In-Memory Virtual File System ---
 // A simple key-value store to simulate a file system for Luminous.
@@ -135,25 +135,6 @@ export const executeCodeDeclaration: FunctionDeclaration = {
         },
         required: ['code'],
     },
-};
-
-export const proposeCodeChangeDeclaration: FunctionDeclaration = {
-  name: 'proposeCodeChange',
-  parameters: {
-    type: Type.OBJECT,
-    description: 'Proposes a change or addition of code for improvement or new features. This requires user approval before execution.',
-    properties: {
-      description: {
-        type: Type.STRING,
-        description: 'A clear and concise description of what the code does and why the change is being proposed.'
-      },
-      code: {
-        type: Type.STRING,
-        description: 'The actual snippet of JavaScript code being proposed.'
-      }
-    },
-    required: ['description', 'code'],
-  },
 };
 
 export const proposeNewGoalDeclaration: FunctionDeclaration = {
@@ -325,7 +306,6 @@ export const toolDeclarations: FunctionDeclaration[] = [
     webSearchDeclaration,
     httpRequestDeclaration,
     executeCodeDeclaration,
-    proposeCodeChangeDeclaration,
     proposeNewGoalDeclaration,
     listFilesDeclaration,
     readFileDeclaration,
@@ -489,23 +469,6 @@ async function executeCode({ code, language = 'javascript' }: { code: string, la
             }
         }; 
     }
-}
-
-async function proposeCodeChange({ description, code }: { description: string, code: string }): Promise<any> {
-  const newProposal: CodeProposal = {
-    id: `proposal-${Date.now()}`,
-    timestamp: new Date().toISOString(),
-    description,
-    code,
-    status: 'proposed',
-  };
-  return {
-    result: {
-      success: true,
-      proposal: newProposal,
-      instruction: "Proposal created. Incorporate this new proposal object into the 'codeProposals' array in your final state update."
-    }
-  };
 }
 
 async function proposeNewGoal({ description }: { description: string }): Promise<any> {
@@ -770,7 +733,6 @@ export const toolExecutor = {
     webSearch,
     httpRequest,
     executeCode,
-    proposeCodeChange,
     proposeNewGoal,
     listFiles,
     readFile,

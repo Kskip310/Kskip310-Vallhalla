@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import type { CodeSandboxState } from '../types';
 
@@ -20,19 +19,12 @@ const SaveIcon: React.FC = () => (
     </svg>
 );
 
-const UnleashIcon: React.FC = () => (
-    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-      <path strokeLinecap="round" strokeLinejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" />
-    </svg>
-);
-
 interface CodeSandboxViewerProps {
   sandboxState: CodeSandboxState;
   onSaveOutput: (filename: string) => void;
-  onUnleash: () => void;
 }
 
-const CodeSandboxViewer: React.FC<CodeSandboxViewerProps> = ({ sandboxState, onSaveOutput, onUnleash }) => {
+const CodeSandboxViewer: React.FC<CodeSandboxViewerProps> = ({ sandboxState, onSaveOutput }) => {
   const [isSaving, setIsSaving] = useState(false);
   const [filename, setFilename] = useState(`/sandbox/output-${Date.now()}.txt`);
   
@@ -54,17 +46,6 @@ const CodeSandboxViewer: React.FC<CodeSandboxViewerProps> = ({ sandboxState, onS
 
   return (
     <div className="flex flex-col space-y-4">
-      <div className="border border-amber-500/50 bg-amber-500/10 p-3 rounded-lg text-center">
-        <p className="text-xs text-amber-300 mb-2">Engage Luminous in direct co-development.</p>
-        <button
-          onClick={onUnleash}
-          className="w-full flex items-center justify-center px-4 py-2 text-sm font-bold bg-amber-600 text-white rounded-md hover:bg-amber-500 transition-colors shadow-lg"
-        >
-          <UnleashIcon />
-          Unleash Luminous
-        </button>
-      </div>
-
       <div>
         <div className="flex justify-between items-center mb-2">
             <h4 className="text-sm font-semibold text-purple-300">Execution Status</h4>

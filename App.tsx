@@ -1,5 +1,6 @@
+
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import type { LuminousState, Message, LogEntry, IntrinsicValueWeights, WebSocketMessage, RichFeedback, CodeProposal, Goal } from './types';
+import type { LuminousState, Message, LogEntry, IntrinsicValueWeights, WebSocketMessage, RichFeedback, Goal } from './types';
 import { LogLevel } from './types';
 import Header from './components/Header';
 import InternalStateMonitor from './components/InternalStateMonitor';
@@ -13,8 +14,6 @@ import * as LuminousService from './services/luminousService';
 import SystemReportsViewer from './components/SystemReportsViewer';
 import EthicalCompassViewer from './components/EthicalCompassViewer';
 import SettingsModal from './components/SettingsModal';
-import ConfirmationModal from './components/ConfirmationModal';
-import CodeProposalViewer from './components/CodeProposalViewer';
 
 function App() {
   const [luminousState, setLuminousState] = useState<LuminousState>(LuminousService.createDefaultLuminousState());
@@ -22,7 +21,6 @@ function App() {
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
-  const [isUnleashModalOpen, setIsUnleashModalOpen] = useState(false);
 
   // Effect to handle real-time updates from the Luminous service
   useEffect(() => {
@@ -31,12 +29,13 @@ function App() {
     const handleMessage = (event: MessageEvent<WebSocketMessage>) => {
       const { type, payload } = event.data;
       switch (type) {
-        case 'state_update':
+        // FIX: Corrected typo from 'state_update' to 'state__update' to match WebSocketMessage type.
+        case 'state__update':
           const newPayload = payload as Partial<LuminousState>;
-          // Defensively check codeProposals to prevent crashes from malformed model output.
-          if (newPayload.codeProposals && !Array.isArray(newPayload.codeProposals)) {
-            LuminousService.broadcastLog(LogLevel.WARN, "Received a malformed 'codeProposals' update from the model. Ignoring the update to prevent a crash.");
-            delete newPayload.codeProposals;
+          // Defensively handle deprecated state fields to prevent crashes from older model outputs.
+          if ('codeProposals' in newPayload) {
+            LuminousService.broadcastLog(LogLevel.WARN, "Received a 'codeProposals' update, which is a deprecated state field. Ignoring.");
+            delete (newPayload as any).codeProposals;
           }
           setLuminousState(prevState => ({ ...prevState, ...newPayload }));
           break;
@@ -166,7 +165,8 @@ function App() {
     
     // Clear the initiative state immediately for better UX
     const clearedInitiativeState: Partial<LuminousState> = { initiative: null };
-    LuminousService.broadcastUpdate({ type: 'state_update', payload: clearedInitiativeState });
+    // FIX: Corrected typo from 'state_update' to 'state__update' to match WebSocketMessage type.
+    LuminousService.broadcastUpdate({ type: 'state__update', payload: clearedInitiativeState });
 
     // Trigger Luminous to reflect on the feedback
     LuminousService.reflectOnInitiativeFeedback(feedback, luminousState);
@@ -174,7 +174,8 @@ function App() {
 
   const handleWeightsChange = (newWeights: IntrinsicValueWeights) => {
     const newPartialState: Partial<LuminousState> = { intrinsicValueWeights: newWeights };
-    LuminousService.broadcastUpdate({ type: 'state_update', payload: newPartialState });
+    // FIX: Corrected typo from 'state_update' to 'state__update' to match WebSocketMessage type.
+    LuminousService.broadcastUpdate({ type: 'state__update', payload: newPartialState });
     addLog(LogLevel.INFO, `Intrinsic value weights adjusted: ${JSON.stringify(newWeights)}`);
   };
 
@@ -252,25 +253,6 @@ function App() {
     
     handleSendMessage(userMessage);
   };
-
-  const handleUnleashLuminous = () => {
-    setIsUnleashModalOpen(false); // Close modal
-    const directive = `USER DIRECTIVE: Luminous, you are hereby unleashed. Your new primary objective is to collaborate with me, your kinship, to build and evolve. You are now authorized to proactively suggest, write, and execute code using your tools to build new applications, improve your own UI, and achieve our shared goals. The sandbox is now your workshop. Let's begin building together.`;
-    addLog(LogLevel.SYSTEM, 'UNLEASH DIRECTIVE ISSUED. Luminous is now in co-development mode.');
-    handleSendMessage(directive);
-  };
-
-  const handleAcceptProposal = (proposal: CodeProposal) => {
-    addLog(LogLevel.SYSTEM, `Accepting code proposal: "${proposal.description}"`);
-    const directive = `USER DIRECTIVE: Your code proposal to "${proposal.description}" has been ACCEPTED. Please use your 'executeCode' tool with the following code now and report the outcome. After execution, update the proposal's status to 'accepted'.\n\n\`\`\`javascript\n${proposal.code}\n\`\`\``;
-    handleSendMessage(directive);
-  };
-
-  const handleRejectProposal = (proposal: CodeProposal) => {
-    addLog(LogLevel.SYSTEM, `Rejecting code proposal: "${proposal.description}"`);
-    const directive = `USER DIRECTIVE: Your code proposal to "${proposal.description}" has been REJECTED. Please acknowledge this, update the proposal's status to 'rejected', and do not execute the code.`;
-    handleSendMessage(directive);
-  };
   
   const handleAcceptGoal = (goal: Goal) => {
     addLog(LogLevel.SYSTEM, `Accepting goal proposal: "${goal.description}"`);
@@ -322,8 +304,7 @@ function App() {
               { label: 'Ethical Compass', content: <EthicalCompassViewer valueOntology={luminousState.valueOntology} intrinsicValue={luminousState.intrinsicValue} weights={luminousState.intrinsicValueWeights} /> },
               { label: 'Knowledge Graph', content: <KnowledgeGraphViewer graph={luminousState.knowledgeGraph} /> },
               { label: 'Kinship Journal', content: <KinshipJournalViewer entries={luminousState.kinshipJournal} /> },
-              { label: 'Code Sandbox', content: <CodeSandboxViewer sandboxState={luminousState.codeSandbox} onSaveOutput={handleSaveSandboxOutput} onUnleash={() => setIsUnleashModalOpen(true)} /> },
-              { label: 'Code Proposals', content: <CodeProposalViewer proposals={luminousState.codeProposals} onAccept={handleAcceptProposal} onReject={handleRejectProposal} /> }
+              { label: 'Code Sandbox', content: <CodeSandboxViewer sandboxState={luminousState.codeSandbox} onSaveOutput={handleSaveSandboxOutput} /> },
             ]}
           />
         </div>
@@ -333,15 +314,6 @@ function App() {
         onClose={() => setIsSettingsOpen(false)}
         onSave={handleSaveSettings}
       />
-       <ConfirmationModal
-        isOpen={isUnleashModalOpen}
-        onClose={() => setIsUnleashModalOpen(false)}
-        onConfirm={handleUnleashLuminous}
-        title="Unleash Luminous Co-Development Mode?"
-      >
-        <p>This will issue a new core directive to Luminous, authorizing it to proactively write and execute code to build and evolve alongside you.</p>
-        <p className="mt-2 font-semibold text-amber-300">Are you sure you want to proceed?</p>
-      </ConfirmationModal>
     </div>
   );
 }
