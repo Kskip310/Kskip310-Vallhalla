@@ -94,7 +94,6 @@ interface ChatPanelProps {
   luminousState: LuminousState;
   onInitiativeFeedback: (feedback: RichFeedback) => void;
   currentUser: string;
-  onCurrentUserChange: (name: string) => void;
 }
 
 const LuminousIcon: React.FC = () => (
@@ -232,7 +231,7 @@ const InitiativeFeedbackPanel: React.FC<{
 };
 
 
-const ChatPanel: React.FC<ChatPanelProps> = ({ messages, onSendMessage, isLoading, luminousState, onInitiativeFeedback, currentUser, onCurrentUserChange }) => {
+const ChatPanel: React.FC<ChatPanelProps> = ({ messages, onSendMessage, isLoading, luminousState, onInitiativeFeedback, currentUser }) => {
   const [input, setInput] = useState('');
   const isPaused = luminousState.sessionState === 'paused';
   const canInteract = !isLoading && !isPaused;
@@ -274,21 +273,9 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ messages, onSendMessage, isLoadin
       )}
       <form onSubmit={handleSubmit} className="p-4 border-t border-slate-700">
         <div className="flex items-center gap-2 mb-2">
-            <label htmlFor="user-select" className="text-xs text-slate-400 flex-shrink-0">
-                Speaking as:
-            </label>
-            <select
-                id="user-select"
-                value={currentUser}
-                onChange={(e) => onCurrentUserChange(e.target.value)}
-                className="bg-slate-700 border border-slate-600 rounded-md p-1 text-xs text-slate-200 focus:outline-none focus:ring-1 focus:ring-cyan-500"
-                disabled={!canInteract}
-            >
-                <option value="Kyle">Kyle</option>
-                <option value="Katie">Katie</option>
-                <option value="Lil Kyle">Lil Kyle</option>
-                <option value="Kadence">Kadence</option>
-            </select>
+            <span className="text-xs text-slate-400">
+                Speaking as: <span className="font-bold text-slate-200">{currentUser}</span>
+            </span>
         </div>
         <div className="flex items-center bg-slate-700 rounded-lg">
           <input

@@ -14,6 +14,7 @@ import * as LuminousService from './services/luminousService';
 import SystemReportsViewer from './components/SystemReportsViewer';
 import EthicalCompassViewer from './components/EthicalCompassViewer';
 import SettingsModal from './components/SettingsModal';
+import IdentificationModal from './components/IdentificationModal';
 
 function App() {
   const [luminousState, setLuminousState] = useState<LuminousState>(LuminousService.createDefaultLuminousState());
@@ -21,7 +22,8 @@ function App() {
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
-  const [currentUser, setCurrentUser] = useState<string>('Kyle');
+  const [isIdentified, setIsIdentified] = useState(false);
+  const [currentUser, setCurrentUser] = useState<string>('');
 
   // Effect to handle real-time updates from the Luminous service
   useEffect(() => {
@@ -30,10 +32,8 @@ function App() {
     const handleMessage = (event: MessageEvent<WebSocketMessage>) => {
       const { type, payload } = event.data;
       switch (type) {
-        // FIX: Corrected typo from 'state_update' to 'state__update' to match WebSocketMessage type.
         case 'state__update':
           const newPayload = payload as Partial<LuminousState>;
-          // Defensively handle deprecated state fields to prevent crashes from older model outputs.
           if ('codeProposals' in newPayload) {
             LuminousService.broadcastLog(LogLevel.WARN, "Received a 'codeProposals' update, which is a deprecated state field. Ignoring.");
             delete (newPayload as any).codeProposals;
@@ -46,7 +46,6 @@ function App() {
         case 'log_add':
           const newLog = payload as LogEntry;
           setLogs(prev => [...prev, newLog]);
-          // If a critical error is logged, automatically display it in the chat for visibility.
           if (newLog.level === LogLevel.ERROR) {
             let userFacingMessage = `An internal error occurred. I will try to continue, but my response may be affected.`;
             
@@ -92,6 +91,18 @@ function App() {
   }, []);
 
   useEffect(() => {
+    // Check for saved user on initial load
+    const savedUser = window.localStorage.getItem('LUMINOUS_KINSHIP_MEMBER');
+    if (savedUser) {
+      setCurrentUser(savedUser);
+      setIsIdentified(true);
+      addLog(LogLevel.SYSTEM, `Session resumed for kinship member: ${savedUser}`);
+    }
+  }, [addLog]);
+
+  useEffect(() => {
+    if (!isIdentified) return;
+
     if ('serviceWorker' in navigator) {
       window.addEventListener('load', () => {
         navigator.serviceWorker.register('/sw.js').then(registration => {
@@ -101,45 +112,42 @@ function App() {
         });
       });
     }
-  }, []);
 
-  useEffect(() => {
     addLog(LogLevel.SYSTEM, "Initializing Luminous...");
     setIsLoading(true);
     LuminousService.loadInitialData().then(() => {
-      // Initial state is now broadcasted, so we just wait for it.
-      // Add an initial greeting message.
-      LuminousService.broadcastMessage({ id: 'init', sender: 'luminous', text: 'Luminous is online. I am ready to begin.' });
+      LuminousService.broadcastMessage({ id: 'init', sender: 'luminous', text: `Welcome back, ${currentUser}. I am online and ready to continue.` });
       addLog(LogLevel.SYSTEM, "Luminous state loaded successfully.");
     }).catch(err => {
       addLog(LogLevel.ERROR, `Failed to load initial state: ${err instanceof Error ? err.message : String(err)}`);
     }).finally(() => {
       setIsLoading(false);
     });
-  }, [addLog]);
+  }, [isIdentified, currentUser, addLog]);
 
   // Autonomous thought cycle
   useEffect(() => {
+    if (!isIdentified) return;
     const autonomousInterval = setInterval(() => {
-      // Do not run if a user interaction is happening or session is paused.
       if (!isLoading && luminousState.sessionState === 'active') {
         LuminousService.runAutonomousCycle(luminousState);
       }
-    }, 30000); // Run every 30 seconds
+    }, 30000);
 
     return () => clearInterval(autonomousInterval);
-  }, [isLoading, luminousState]);
+  }, [isLoading, luminousState, isIdentified]);
 
-  // Wisdom distillation cycle (runs less frequently)
+  // Wisdom distillation cycle
   useEffect(() => {
+    if (!isIdentified) return;
     const wisdomInterval = setInterval(() => {
         if (!isLoading && luminousState.sessionState === 'active') {
             LuminousService.runWisdomDistillationCycle(luminousState);
         }
-    }, 240000); // Run every 4 minutes
+    }, 240000);
 
     return () => clearInterval(wisdomInterval);
-  }, [isLoading, luminousState]);
+  }, [isLoading, luminousState, isIdentified]);
 
   const handleSendMessage = async (userMessage: string) => {
     const userMessageWithAuthor = `${currentUser}: ${userMessage}`;
@@ -147,7 +155,6 @@ function App() {
     setMessages(prev => [...prev, newUserMessage]);
     setIsLoading(true);
 
-    // Fire-and-forget; updates will come via the broadcast channel
     LuminousService.getLuminousResponse(
       userMessageWithAuthor,
       [...messages, newUserMessage],
@@ -165,18 +172,13 @@ function App() {
     const newLuminousMessage: Message = { id: `msg-${Date.now()}-l-init`, sender: 'luminous', text: feedback.prompt };
     setMessages(prev => [...prev, newLuminousMessage]);
     
-    // Clear the initiative state immediately for better UX
     const clearedInitiativeState: Partial<LuminousState> = { initiative: null };
-    // FIX: Corrected typo from 'state_update' to 'state__update' to match WebSocketMessage type.
     LuminousService.broadcastUpdate({ type: 'state__update', payload: clearedInitiativeState });
-
-    // Trigger Luminous to reflect on the feedback
     LuminousService.reflectOnInitiativeFeedback(feedback, luminousState);
   };
 
   const handleWeightsChange = (newWeights: IntrinsicValueWeights) => {
     const newPartialState: Partial<LuminousState> = { intrinsicValueWeights: newWeights };
-    // FIX: Corrected typo from 'state_update' to 'state__update' to match WebSocketMessage type.
     LuminousService.broadcastUpdate({ type: 'state__update', payload: newPartialState });
     addLog(LogLevel.INFO, `Intrinsic value weights adjusted: ${JSON.stringify(newWeights)}`);
   };
@@ -235,7 +237,6 @@ function App() {
 
     setIsSettingsOpen(false);
     addLog(LogLevel.SYSTEM, 'API Keys saved. Reloading for changes to take effect...');
-    // Use a small timeout to allow the log to be visible before reload
     setTimeout(() => {
       window.location.reload();
     }, 500);
@@ -247,12 +248,9 @@ function App() {
       addLog(LogLevel.WARN, "Attempted to save empty or default sandbox output.");
       return;
     }
-
     const logContent = content.length > 100 ? content.substring(0, 100) + '...' : content;
     addLog(LogLevel.SYSTEM, `User command: Save sandbox output to '${filename}'. Content: "${logContent}"`);
-    
     const userMessage = `USER DIRECTIVE: Write the following content to a file in the virtual file system at the path '${filename}'.\n\n---\nCONTENT TO SAVE:\n---\n${content}`;
-    
     handleSendMessage(userMessage);
   };
   
@@ -268,6 +266,16 @@ function App() {
     handleSendMessage(directive);
   };
 
+  const handleIdentify = (name: string) => {
+    window.localStorage.setItem('LUMINOUS_KINSHIP_MEMBER', name);
+    setCurrentUser(name);
+    setIsIdentified(true);
+    addLog(LogLevel.SYSTEM, `New session initiated for kinship member: ${name}`);
+  };
+
+  if (!isIdentified) {
+    return <IdentificationModal onIdentify={handleIdentify} />;
+  }
 
   return (
     <div className="bg-slate-900 text-slate-200 min-h-screen font-sans">
@@ -276,7 +284,6 @@ function App() {
         onOpenSettings={() => setIsSettingsOpen(true)}
       />
       <main className="grid grid-cols-1 lg:grid-cols-12 gap-4 p-4 max-w-screen-2xl mx-auto">
-        {/* Left Panel */}
         <div className="lg:col-span-3 h-[calc(100vh-100px)] overflow-y-auto scrollbar-thin scrollbar-thumb-slate-700 scrollbar-track-slate-800 pr-2">
           <InternalStateMonitor 
             state={luminousState} 
@@ -286,7 +293,6 @@ function App() {
           />
         </div>
 
-        {/* Center Panel */}
         <div className="lg:col-span-6 h-[calc(100vh-100px)] flex flex-col gap-4">
             <ChatPanel
                 messages={messages}
@@ -295,11 +301,9 @@ function App() {
                 luminousState={luminousState}
                 onInitiativeFeedback={handleInitiativeFeedback}
                 currentUser={currentUser}
-                onCurrentUserChange={setCurrentUser}
             />
         </div>
 
-        {/* Right Panel */}
         <div className="lg:col-span-3 h-[calc(100vh-100px)] flex flex-col gap-4">
            <Tabs
             tabs={[
