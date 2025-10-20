@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import type { KnowledgeGraph, GraphNode } from '../types';
 import * as d3Force from 'd3-force';
@@ -184,8 +185,8 @@ const KnowledgeGraphViewer: React.FC<{ graph: KnowledgeGraph }> = ({ graph: init
       .text(d => d.label);
 
     const drag = d3Drag<SVGGElement, D3Node>()
-      .on('start', (event, d) => {
-        if (!event.active) simulation.alphaTarget(0.3).restart();
+      .on('start', (_event, d) => {
+        if (!_event.active) simulation.alphaTarget(0.3).restart();
         d.fx = d.x; d.fy = d.y;
       })
       .on('drag', (event, d) => {
@@ -197,7 +198,7 @@ const KnowledgeGraphViewer: React.FC<{ graph: KnowledgeGraph }> = ({ graph: init
       });
 
     nodeSelectionRef.current
-        .on('mouseenter', (_, d) => setHoveredNode(d))
+        .on('mouseenter', (event, d) => setHoveredNode(d))
         .on('mouseleave', () => setHoveredNode(null))
         .call(drag as any);
 
